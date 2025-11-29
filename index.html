@@ -1,0 +1,2444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FurniRecycle - AI-Powered Furniture Recycling &amp; Refurbishment</title>
+    <style>
+        :root {
+  /* Primitive Color Tokens */
+  --color-white: rgba(255, 255, 255, 1);
+  --color-black: rgba(0, 0, 0, 1);
+  --color-cream-50: rgba(252, 252, 249, 1);
+  --color-cream-100: rgba(255, 255, 253, 1);
+  --color-gray-200: rgba(245, 245, 245, 1);
+  --color-gray-300: rgba(167, 169, 169, 1);
+  --color-gray-400: rgba(119, 124, 124, 1);
+  --color-slate-500: rgba(98, 108, 113, 1);
+  --color-brown-600: rgba(94, 82, 64, 1);
+  --color-charcoal-700: rgba(31, 33, 33, 1);
+  --color-charcoal-800: rgba(38, 40, 40, 1);
+  --color-slate-900: rgba(19, 52, 59, 1);
+  --color-teal-300: rgba(50, 184, 198, 1);
+  --color-teal-400: rgba(45, 166, 178, 1);
+  --color-teal-500: rgba(33, 128, 141, 1);
+  --color-teal-600: rgba(29, 116, 128, 1);
+  --color-teal-700: rgba(26, 104, 115, 1);
+  --color-teal-800: rgba(41, 150, 161, 1);
+  --color-red-400: rgba(255, 84, 89, 1);
+  --color-red-500: rgba(192, 21, 47, 1);
+  --color-orange-400: rgba(230, 129, 97, 1);
+  --color-orange-500: rgba(168, 75, 47, 1);
+
+  /* RGB versions for opacity control */
+  --color-brown-600-rgb: 94, 82, 64;
+  --color-teal-500-rgb: 33, 128, 141;
+  --color-slate-900-rgb: 19, 52, 59;
+  --color-slate-500-rgb: 98, 108, 113;
+  --color-red-500-rgb: 192, 21, 47;
+  --color-red-400-rgb: 255, 84, 89;
+  --color-orange-500-rgb: 168, 75, 47;
+  --color-orange-400-rgb: 230, 129, 97;
+
+  /* Background color tokens (Light Mode) */
+  --color-bg-1: rgba(59, 130, 246, 0.08);
+  --color-bg-2: rgba(245, 158, 11, 0.08);
+  --color-bg-3: rgba(34, 197, 94, 0.08);
+  --color-bg-4: rgba(239, 68, 68, 0.08);
+  --color-bg-5: rgba(147, 51, 234, 0.08);
+  --color-bg-6: rgba(249, 115, 22, 0.08);
+  --color-bg-7: rgba(236, 72, 153, 0.08);
+  --color-bg-8: rgba(6, 182, 212, 0.08);
+
+  /* Semantic Color Tokens (Light Mode) */
+  --color-background: var(--color-cream-50);
+  --color-surface: var(--color-cream-100);
+  --color-text: var(--color-slate-900);
+  --color-text-secondary: var(--color-slate-500);
+  --color-primary: var(--color-teal-500);
+  --color-primary-hover: var(--color-teal-600);
+  --color-primary-active: var(--color-teal-700);
+  --color-secondary: rgba(var(--color-brown-600-rgb), 0.12);
+  --color-secondary-hover: rgba(var(--color-brown-600-rgb), 0.2);
+  --color-secondary-active: rgba(var(--color-brown-600-rgb), 0.25);
+  --color-border: rgba(var(--color-brown-600-rgb), 0.2);
+  --color-btn-primary-text: var(--color-cream-50);
+  --color-card-border: rgba(var(--color-brown-600-rgb), 0.12);
+  --color-card-border-inner: rgba(var(--color-brown-600-rgb), 0.12);
+  --color-error: var(--color-red-500);
+  --color-success: var(--color-teal-500);
+  --color-warning: var(--color-orange-500);
+  --color-info: var(--color-slate-500);
+  --color-focus-ring: rgba(var(--color-teal-500-rgb), 0.4);
+  --color-select-caret: rgba(var(--color-slate-900-rgb), 0.8);
+
+  /* Common style patterns */
+  --focus-ring: 0 0 0 3px var(--color-focus-ring);
+  --focus-outline: 2px solid var(--color-primary);
+  --status-bg-opacity: 0.15;
+  --status-border-opacity: 0.25;
+
+  /* RGB versions for opacity control */
+  --color-success-rgb: 33, 128, 141;
+  --color-error-rgb: 192, 21, 47;
+  --color-warning-rgb: 168, 75, 47;
+  --color-info-rgb: 98, 108, 113;
+
+  /* Typography */
+  --font-family-base: "FKGroteskNeue", "Geist", "Inter", -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-family-mono: "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo,
+    Monaco, Consolas, monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 20px;
+  --font-size-3xl: 24px;
+  --font-size-4xl: 30px;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 550;
+  --font-weight-bold: 600;
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.5;
+  --letter-spacing-tight: -0.01em;
+
+  /* Spacing */
+  --space-0: 0;
+  --space-1: 1px;
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-32: 32px;
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-base: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.04),
+    0 2px 4px -1px rgba(0, 0, 0, 0.02);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.04),
+    0 4px 6px -2px rgba(0, 0, 0, 0.02);
+  --shadow-inset-sm: inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.03);
+
+  /* Animation */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Layout */
+  --container-sm: 640px;
+  --container-md: 768px;
+  --container-lg: 1024px;
+  --container-xl: 1280px;
+
+  /* Custom eco-friendly palette */
+  --color-eco-green: rgba(76, 175, 80, 1);
+  --color-eco-green-light: rgba(76, 175, 80, 0.1);
+  --color-eco-brown: rgba(121, 85, 72, 1);
+  --color-eco-earth: rgba(141, 110, 99, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-gray-400-rgb: 119, 124, 124;
+    --color-teal-300-rgb: 50, 184, 198;
+    --color-gray-300-rgb: 167, 169, 169;
+    --color-gray-200-rgb: 245, 245, 245;
+
+    --color-bg-1: rgba(29, 78, 216, 0.15);
+    --color-bg-2: rgba(180, 83, 9, 0.15);
+    --color-bg-3: rgba(21, 128, 61, 0.15);
+    --color-bg-4: rgba(185, 28, 28, 0.15);
+    --color-bg-5: rgba(107, 33, 168, 0.15);
+    --color-bg-6: rgba(194, 65, 12, 0.15);
+    --color-bg-7: rgba(190, 24, 93, 0.15);
+    --color-bg-8: rgba(8, 145, 178, 0.15);
+
+    --color-background: var(--color-charcoal-700);
+    --color-surface: var(--color-charcoal-800);
+    --color-text: var(--color-gray-200);
+    --color-text-secondary: rgba(var(--color-gray-300-rgb), 0.7);
+    --color-primary: var(--color-teal-300);
+    --color-primary-hover: var(--color-teal-400);
+    --color-primary-active: var(--color-teal-800);
+    --color-secondary: rgba(var(--color-gray-400-rgb), 0.15);
+    --color-secondary-hover: rgba(var(--color-gray-400-rgb), 0.25);
+    --color-secondary-active: rgba(var(--color-gray-400-rgb), 0.3);
+    --color-border: rgba(var(--color-gray-400-rgb), 0.3);
+    --color-error: var(--color-red-400);
+    --color-success: var(--color-teal-300);
+    --color-warning: var(--color-orange-400);
+    --color-info: var(--color-gray-300);
+    --color-focus-ring: rgba(var(--color-teal-300-rgb), 0.4);
+    --color-btn-primary-text: var(--color-slate-900);
+    --color-card-border: rgba(var(--color-gray-400-rgb), 0.2);
+    --color-card-border-inner: rgba(var(--color-gray-400-rgb), 0.15);
+    --shadow-inset-sm: inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.15);
+    --color-border-secondary: rgba(var(--color-gray-400-rgb), 0.2);
+    --color-select-caret: rgba(var(--color-gray-200-rgb), 0.8);
+
+    --color-success-rgb: var(--color-teal-300-rgb);
+    --color-error-rgb: var(--color-red-400-rgb);
+    --color-warning-rgb: var(--color-orange-400-rgb);
+    --color-info-rgb: var(--color-gray-300-rgb);
+  }
+}
+
+@font-face {
+  font-family: 'FKGroteskNeue';
+  src: url('https://r2cdn.perplexity.ai/fonts/FKGroteskNeue.woff2')
+    format('woff2');
+}
+
+html {
+  font-size: var(--font-size-base);
+  font-family: var(--font-family-base);
+  line-height: var(--line-height-normal);
+  color: var(--color-text);
+  background-color: var(--color-background);
+  -webkit-font-smoothing: antialiased;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  color: var(--color-text);
+  letter-spacing: var(--letter-spacing-tight);
+}
+
+h1 { font-size: var(--font-size-4xl); }
+h2 { font-size: var(--font-size-3xl); }
+h3 { font-size: var(--font-size-2xl); }
+h4 { font-size: var(--font-size-xl); }
+h5 { font-size: var(--font-size-lg); }
+h6 { font-size: var(--font-size-md); }
+
+p { margin: 0 0 var(--space-16) 0; }
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
+a:hover { color: var(--color-primary-hover); }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12) var(--space-24);
+  border-radius: var(--radius-base);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-standard);
+  border: none;
+  text-decoration: none;
+  position: relative;
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.btn--primary {
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
+}
+
+.btn--primary:hover { background: var(--color-primary-hover); }
+.btn--primary:active { background: var(--color-primary-active); }
+
+.btn--secondary {
+  background: var(--color-secondary);
+  color: var(--color-text);
+}
+
+.btn--secondary:hover { background: var(--color-secondary-hover); }
+.btn--secondary:active { background: var(--color-secondary-active); }
+
+.btn--outline {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.btn--outline:hover { background: var(--color-secondary); }
+
+.btn--lg {
+  padding: var(--space-16) var(--space-32);
+  font-size: var(--font-size-lg);
+  border-radius: var(--radius-md);
+}
+
+.btn--full-width { width: 100%; }
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.card {
+  background-color: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-card-border);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: box-shadow var(--duration-normal) var(--ease-standard);
+}
+
+.card:hover { box-shadow: var(--shadow-md); }
+
+/* Layout */
+.container {
+  width: 100%;
+  max-width: var(--container-xl);
+  margin: 0 auto;
+  padding: 0 var(--space-16);
+}
+
+.view {
+  display: none;
+}
+
+.view.active {
+  display: block;
+}
+
+/* Header */
+.header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-card-border);
+  padding: var(--space-16) 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow-sm);
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-24);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.nav {
+  display: flex;
+  gap: var(--space-16);
+  align-items: center;
+}
+
+.nav-link {
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-base);
+  cursor: pointer;
+  transition: background var(--duration-fast);
+  font-size: var(--font-size-base);
+}
+
+.nav-link:hover {
+  background: var(--color-secondary);
+}
+
+/* Hero Section */
+.hero {
+  background: var(--color-bg-3);
+  padding: var(--space-32) 0;
+  text-align: center;
+}
+
+.hero h1 {
+  font-size: 36px;
+  margin-bottom: var(--space-16);
+}
+
+.hero p {
+  font-size: var(--font-size-xl);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-32);
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-actions {
+  display: flex;
+  gap: var(--space-16);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* Value Props */
+.value-props {
+  padding: var(--space-32) 0;
+}
+
+.props-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-24);
+  margin-top: var(--space-24);
+}
+
+.prop-card {
+  padding: var(--space-24);
+  text-align: center;
+}
+
+.prop-icon {
+  font-size: 48px;
+  margin-bottom: var(--space-12);
+}
+
+.prop-card h3 {
+  margin-bottom: var(--space-8);
+}
+
+/* How It Works */
+.how-it-works {
+  padding: var(--space-32) 0;
+  background: var(--color-bg-1);
+}
+
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-24);
+  margin-top: var(--space-24);
+}
+
+.step {
+  text-align: center;
+  padding: var(--space-16);
+}
+
+.step-number {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  margin: 0 auto var(--space-12);
+}
+
+/* Stats Section */
+.stats-section {
+  padding: var(--space-32) 0;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-24);
+  margin-top: var(--space-24);
+}
+
+.stat-card {
+  padding: var(--space-24);
+  text-align: center;
+}
+
+.stat-value {
+  font-size: var(--font-size-4xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  margin-bottom: var(--space-8);
+}
+
+.stat-label {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+}
+
+/* Testimonials */
+.testimonials {
+  padding: var(--space-32) 0;
+  background: var(--color-bg-2);
+}
+
+.testimonials-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-24);
+  margin-top: var(--space-24);
+}
+
+.testimonial-card {
+  padding: var(--space-24);
+}
+
+.testimonial-text {
+  font-style: italic;
+  margin-bottom: var(--space-16);
+  color: var(--color-text-secondary);
+}
+
+.testimonial-author {
+  font-weight: var(--font-weight-bold);
+}
+
+.testimonial-meta {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Footer */
+.footer {
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-card-border);
+  padding: var(--space-32) 0;
+  margin-top: var(--space-32);
+}
+
+.footer-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-32);
+}
+
+.footer-section h4 {
+  margin-bottom: var(--space-16);
+}
+
+.footer-section p,
+.footer-section a {
+  margin-bottom: var(--space-8);
+  display: block;
+  color: var(--color-text-secondary);
+}
+
+.footer-section a:hover {
+  color: var(--color-primary);
+}
+
+/* Sell Flow */
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-16);
+  margin: var(--space-24) 0;
+}
+
+.category-card {
+  padding: var(--space-24);
+  text-align: center;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all var(--duration-fast);
+}
+
+.category-card:hover {
+  border-color: var(--color-primary);
+  transform: translateY(-2px);
+}
+
+.category-card.selected {
+  border-color: var(--color-primary);
+  background: var(--color-bg-3);
+}
+
+.category-icon {
+  font-size: 48px;
+  margin-bottom: var(--space-8);
+}
+
+.condition-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-16);
+  margin: var(--space-24) 0;
+}
+
+.condition-card {
+  padding: var(--space-24);
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all var(--duration-fast);
+}
+
+.condition-card:hover {
+  border-color: var(--color-primary);
+}
+
+.condition-card.selected {
+  border-color: var(--color-primary);
+  background: var(--color-bg-3);
+}
+
+.upload-area {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-32);
+  text-align: center;
+  margin: var(--space-24) 0;
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+
+.upload-area:hover {
+  border-color: var(--color-primary);
+  background: var(--color-bg-3);
+}
+
+.upload-area.dragover {
+  border-color: var(--color-primary);
+  background: var(--color-bg-3);
+}
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-16);
+  margin-top: var(--space-16);
+}
+
+.preview-item {
+  position: relative;
+  padding-top: 100%;
+  border-radius: var(--radius-base);
+  overflow: hidden;
+  border: 1px solid var(--color-card-border);
+}
+
+.preview-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.remove-preview {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  background: var(--color-error);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.form-group {
+  margin-bottom: var(--space-16);
+}
+
+.form-label {
+  display: block;
+  margin-bottom: var(--space-8);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-sm);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  padding: var(--space-12);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-base);
+  transition: border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.form-control:focus {
+  border-color: var(--color-primary);
+  outline: var(--focus-outline);
+}
+
+/* Quote Display */
+.quote-card {
+  padding: var(--space-32);
+  margin: var(--space-24) 0;
+  background: var(--color-bg-3);
+}
+
+.quote-amount {
+  font-size: 48px;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  margin-bottom: var(--space-16);
+}
+
+.material-breakdown {
+  margin-top: var(--space-16);
+}
+
+.material-item {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-12);
+  margin-bottom: var(--space-8);
+  background: var(--color-surface);
+  border-radius: var(--radius-base);
+}
+
+/* Product Grid */
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-24);
+  margin: var(--space-24) 0;
+}
+
+.product-card {
+  padding: 0;
+  cursor: pointer;
+}
+
+.product-image {
+  width: 100%;
+  height: 200px;
+  background: var(--color-bg-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 64px;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.product-info {
+  padding: var(--space-16);
+}
+
+.product-name {
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--space-8);
+}
+
+.product-condition {
+  display: inline-block;
+  padding: var(--space-4) var(--space-8);
+  background: var(--color-bg-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-8);
+}
+
+.product-price {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin: var(--space-12) 0;
+}
+
+.price-current {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+}
+
+.price-original {
+  text-decoration: line-through;
+  color: var(--color-text-secondary);
+}
+
+.savings {
+  color: var(--color-success);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Filters */
+.filters {
+  background: var(--color-surface);
+  padding: var(--space-24);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-24);
+  border: 1px solid var(--color-card-border);
+}
+
+.filter-group {
+  margin-bottom: var(--space-16);
+}
+
+.filter-group:last-child {
+  margin-bottom: 0;
+}
+
+/* Cart */
+.cart-items {
+  margin: var(--space-24) 0;
+}
+
+.cart-item {
+  display: flex;
+  gap: var(--space-16);
+  padding: var(--space-16);
+  margin-bottom: var(--space-16);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-card-border);
+}
+
+.cart-item-image {
+  width: 100px;
+  height: 100px;
+  background: var(--color-bg-2);
+  border-radius: var(--radius-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  flex-shrink: 0;
+}
+
+.cart-item-details {
+  flex: 1;
+}
+
+.cart-item-remove {
+  color: var(--color-error);
+  cursor: pointer;
+  padding: var(--space-8);
+}
+
+.cart-summary {
+  background: var(--color-bg-3);
+  padding: var(--space-24);
+  border-radius: var(--radius-lg);
+  margin-top: var(--space-24);
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-8) 0;
+}
+
+.summary-row.total {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  border-top: 2px solid var(--color-border);
+  margin-top: var(--space-8);
+  padding-top: var(--space-16);
+}
+
+/* Dashboard */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-24);
+  margin: var(--space-24) 0;
+}
+
+.dashboard-card {
+  padding: var(--space-24);
+}
+
+.transaction-list {
+  margin-top: var(--space-24);
+}
+
+.transaction-item {
+  padding: var(--space-16);
+  margin-bottom: var(--space-12);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-card-border);
+}
+
+.transaction-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-8);
+}
+
+/* Auth Forms */
+.auth-container {
+  max-width: 400px;
+  margin: var(--space-32) auto;
+}
+
+.auth-form {
+  background: var(--color-surface);
+  padding: var(--space-32);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-card-border);
+}
+
+/* Utility */
+.text-center { text-align: center; }
+.mt-24 { margin-top: var(--space-24); }
+.mb-24 { margin-bottom: var(--space-24); }
+.mb-16 { margin-bottom: var(--space-16); }
+.mb-8 { margin-bottom: var(--space-8); }
+.p-24 { padding: var(--space-24); }
+
+.section-title {
+  font-size: var(--font-size-3xl);
+  margin-bottom: var(--space-8);
+  text-align: center;
+}
+
+.section-subtitle {
+  text-align: center;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-24);
+}
+
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--color-secondary);
+  border-radius: var(--radius-full);
+  margin: var(--space-16) 0;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width var(--duration-normal);
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  color: var(--color-primary);
+  cursor: pointer;
+  margin-bottom: var(--space-16);
+}
+
+.back-button:hover {
+  color: var(--color-primary-hover);
+}
+
+.error-message {
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  margin-top: var(--space-4);
+}
+
+.success-message {
+  background: var(--color-bg-3);
+  padding: var(--space-16);
+  border-radius: var(--radius-base);
+  border-left: 4px solid var(--color-success);
+  margin: var(--space-16) 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .hero h1 { font-size: 28px; }
+  .hero p { font-size: var(--font-size-base); }
+  .nav { flex-wrap: wrap; }
+  .header-content { flex-direction: column; gap: var(--space-12); }
+  .category-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  .product-grid { grid-template-columns: 1fr; }
+}
+
+.admin-toggle {
+  position: fixed;
+  bottom: var(--space-16);
+  right: var(--space-16);
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
+  padding: var(--space-12) var(--space-16);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  font-size: var(--font-size-sm);
+}
+
+.admin-toggle:hover {
+  background: var(--color-primary-hover);
+}
+
+.material-tag {
+  display: inline-block;
+  padding: var(--space-4) var(--space-8);
+  background: var(--color-bg-1);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  margin-right: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo" onclick="navigateTo('home')">
+                    ♻️ FurniRecycle
+                </div>
+                <nav class="nav">
+                    <div class="nav-link" onclick="navigateTo('home')">Home</div>
+                    <div class="nav-link" onclick="navigateTo('buy')">Buy Refurbished</div>
+                    <div class="nav-link" onclick="navigateTo('sell-start')">Sell Furniture</div>
+                    <div class="nav-link" onclick="navigateTo('corporate')">Corporate</div>
+                    <div class="nav-link" id="authLink" onclick="handleAuthClick()">Login</div>
+                    <div class="nav-link" id="cartLink" onclick="navigateTo('cart')" style="display: none;">🛒 Cart (<span id="cartCount">0</span>)</div>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Home View -->
+    <div id="view-home" class="view active">
+        <section class="hero">
+            <div class="container">
+                <h1>Turn Your Old Furniture Into Cash &amp; Sustainability</h1>
+                <p>AI-powered instant quotes. Door pickup. Fair prices. Join the circular economy revolution.</p>
+                <div class="hero-actions">
+                    <button class="btn btn--primary btn--lg" onclick="navigateTo('sell-start')">Sell Your Furniture</button>
+                    <button class="btn btn--secondary btn--lg" onclick="navigateTo('buy')">Browse Refurbished</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="value-props">
+            <div class="container">
+                <h2 class="section-title">Why Choose FurniRecycle?</h2>
+                <div class="props-grid">
+                    <div class="card prop-card">
+                        <div class="prop-icon">⚡</div>
+                        <h3>Instant Quotes</h3>
+                        <p>AI-powered pricing in under 60 seconds. Fair and transparent.</p>
+                    </div>
+                    <div class="card prop-card">
+                        <div class="prop-icon">🚚</div>
+                        <h3>Door Pickup</h3>
+                        <p>Free pickup from your location. No hassle, no heavy lifting.</p>
+                    </div>
+                    <div class="card prop-card">
+                        <div class="prop-icon">💰</div>
+                        <h3>Best Prices</h3>
+                        <p>Market-leading rates based on material value and condition.</p>
+                    </div>
+                    <div class="card prop-card">
+                        <div class="prop-icon">🌱</div>
+                        <h3>Eco-Friendly</h3>
+                        <p>Reduce waste, save trees, and contribute to a circular economy.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="how-it-works">
+            <div class="container">
+                <h2 class="section-title">How It Works</h2>
+                <div class="steps-grid">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <h4>Select Category</h4>
+                        <p>Choose your furniture type</p>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <h4>Assess Condition</h4>
+                        <p>Upload photos and details</p>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <h4>Get Instant Quote</h4>
+                        <p>AI calculates fair price</p>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <h4>Schedule Pickup</h4>
+                        <p>Get paid on collection</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="stats-section">
+            <div class="container">
+                <h2 class="section-title">Our Impact</h2>
+                <div class="stats-grid">
+                    <div class="card stat-card">
+                        <div class="stat-value" id="statItems">0</div>
+                        <div class="stat-label">Items Recycled</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-value" id="statMaterial">0</div>
+                        <div class="stat-label">KG Material Recovered</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-value" id="statCO2">0</div>
+                        <div class="stat-label">Tonnes CO₂ Prevented</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-value" id="statTrees">0</div>
+                        <div class="stat-label">Trees Saved</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="testimonials">
+            <div class="container">
+                <h2 class="section-title">What Our Customers Say</h2>
+                <div class="testimonials-grid" id="testimonialsGrid"></div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Sell Flow Views -->
+    <div id="view-sell-start" class="view">
+        <div class="container">
+            <div class="back-button" onclick="navigateTo('home')">← Back to Home</div>
+            <h2 class="section-title">Sell Your Furniture</h2>
+            <p class="section-subtitle">Step 1 of 5: Select Furniture Category</p>
+            <div class="progress-bar"><div class="progress-fill" style="width: 20%"></div></div>
+            <div class="category-grid" id="categoryGrid"></div>
+        </div>
+    </div>
+
+    <div id="view-sell-condition" class="view">
+        <div class="container">
+            <div class="back-button" onclick="navigateTo('sell-start')">← Back</div>
+            <h2 class="section-title">Assess Condition</h2>
+            <p class="section-subtitle">Step 2 of 5: How would you rate the condition?</p>
+            <div class="progress-bar"><div class="progress-fill" style="width: 40%"></div></div>
+            <div class="condition-options">
+                <div class="card condition-card" onclick="selectCondition('excellent')">
+                    <h3>Excellent</h3>
+                    <p>Like new, minimal wear, no damage</p>
+                </div>
+                <div class="card condition-card" onclick="selectCondition('good')">
+                    <h3>Good</h3>
+                    <p>Minor wear, fully functional</p>
+                </div>
+                <div class="card condition-card" onclick="selectCondition('fair')">
+                    <h3>Fair</h3>
+                    <p>Visible wear, may need minor repairs</p>
+                </div>
+                <div class="card condition-card" onclick="selectCondition('repair')">
+                    <h3>Needs Repair</h3>
+                    <p>Damaged or broken, needs fixing</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-sell-upload" class="view">
+        <div class="container">
+            <div class="back-button" onclick="navigateTo('sell-condition')">← Back</div>
+            <h2 class="section-title">Upload Photos</h2>
+            <p class="section-subtitle">Step 3 of 5: Help us see your furniture</p>
+            <div class="progress-bar"><div class="progress-fill" style="width: 60%"></div></div>
+            <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                <div style="font-size: 48px; margin-bottom: 16px;">📸</div>
+                <p>Click to upload or drag and drop photos here</p>
+                <p style="font-size: 12px; color: var(--color-text-secondary);">Upload up to 5 photos (JPG, PNG)</p>
+                <input type="file" id="fileInput" multiple accept="image/*" style="display: none;" onchange="handleFileSelect(event)">
+            </div>
+            <div class="preview-grid" id="previewGrid"></div>
+            <button class="btn btn--primary btn--full-width mt-24" onclick="navigateTo('sell-details')" id="continueUploadBtn" disabled>Continue</button>
+        </div>
+    </div>
+
+    <div id="view-sell-details" class="view">
+        <div class="container">
+            <div class="back-button" onclick="navigateTo('sell-upload')">← Back</div>
+            <h2 class="section-title">Furniture Details</h2>
+            <p class="section-subtitle">Step 4 of 5: Tell us more about your furniture</p>
+            <div class="progress-bar"><div class="progress-fill" style="width: 80%"></div></div>
+            <div class="card" style="padding: 24px; margin-top: 24px;">
+                <form id="detailsForm">
+                    <div class="form-group">
+                        <label class="form-label">Dimensions (approx.)</label>
+                        <input type="text" class="form-control" id="dimensions" placeholder="e.g., 6ft x 3ft" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Color</label>
+                        <input type="text" class="form-control" id="color" placeholder="e.g., Brown, Grey" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Brand (if known)</label>
+                        <input type="text" class="form-control" id="brand" placeholder="Optional">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Age (years)</label>
+                        <input type="number" class="form-control" id="age" min="0" max="50" placeholder="e.g., 3" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Material Type (if known)</label>
+                        <select class="form-control" id="materialType">
+                            <option value="">Select material</option>
+                            <option value="wood">Wood</option>
+                            <option value="metal">Metal</option>
+                            <option value="upholstered">Upholstered</option>
+                            <option value="mixed">Mixed Materials</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Pickup Location (City)</label>
+                        <input type="text" class="form-control" id="location" placeholder="e.g., Mumbai" required>
+                    </div>
+                    <button type="submit" class="btn btn--primary btn--full-width">Get Instant Quote</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-sell-quote" class="view">
+        <div class="container">
+            <div class="back-button" onclick="navigateTo('sell-details')">← Back</div>
+            <h2 class="section-title">Your Instant Quote</h2>
+            <p class="section-subtitle">Step 5 of 5: Review and confirm</p>
+            <div class="progress-bar"><div class="progress-fill" style="width: 100%"></div></div>
+            
+            <div class="card quote-card">
+                <div class="text-center">
+                    <h3 style="margin-bottom: 8px; color: var(--color-text-secondary);">We'll pay you</h3>
+                    <div class="quote-amount" id="quoteAmount">₹0</div>
+                    <p style="color: var(--color-text-secondary);">Based on AI material detection and condition assessment</p>
+                </div>
+                
+                <div class="material-breakdown">
+                    <h4 style="margin-bottom: 16px;">Material Breakdown</h4>
+                    <div id="materialBreakdown"></div>
+                </div>
+            </div>
+
+            <div class="card" style="padding: 24px; margin-top: 24px;">
+                <h4 style="margin-bottom: 16px;">Schedule Pickup</h4>
+                <div class="form-group">
+                    <label class="form-label">Preferred Date</label>
+                    <input type="date" class="form-control" id="pickupDate" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Pickup Address</label>
+                    <textarea class="form-control" id="pickupAddress" rows="3" placeholder="Enter complete address" required></textarea>
+                </div>
+                <button class="btn btn--primary btn--full-width" onclick="confirmBooking()">Confirm Booking</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Buy Refurbished View -->
+    <div id="view-buy" class="view">
+        <div class="container">
+            <h2 class="section-title">Browse Refurbished Furniture</h2>
+            <p class="section-subtitle">Quality furniture, sustainable prices</p>
+            
+            <div class="filters">
+                <div class="filter-group">
+                    <label class="form-label">Category</label>
+                    <select class="form-control" id="filterCategory" onchange="applyFilters()">
+                        <option value="">All Categories</option>
+                        <option value="Sofas">Sofas</option>
+                        <option value="Tables">Tables</option>
+                        <option value="Beds">Beds</option>
+                        <option value="Chairs">Chairs</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="form-label">Condition</label>
+                    <select class="form-control" id="filterCondition" onchange="applyFilters()">
+                        <option value="">All Conditions</option>
+                        <option value="Refurbished">Refurbished</option>
+                        <option value="Like New">Like New</option>
+                        <option value="Premium Upcycled">Premium Upcycled</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="form-label">Max Price</label>
+                    <input type="number" class="form-control" id="filterPrice" placeholder="e.g., 20000" onchange="applyFilters()">
+                </div>
+            </div>
+
+            <div class="product-grid" id="productGrid"></div>
+        </div>
+    </div>
+
+    <!-- Product Detail View -->
+    <div id="view-product-detail" class="view">
+        <div class="container">
+            <div class="back-button" onclick="navigateTo('buy')">← Back to Browse</div>
+            <div id="productDetailContent"></div>
+        </div>
+    </div>
+
+    <!-- Cart View -->
+    <div id="view-cart" class="view">
+        <div class="container">
+            <div class="back-button" onclick="navigateTo('buy')">← Continue Shopping</div>
+            <h2 class="section-title">Shopping Cart</h2>
+            <div class="cart-items" id="cartItems"></div>
+            <div class="cart-summary" id="cartSummary"></div>
+        </div>
+    </div>
+
+    <!-- Checkout View -->
+    <div id="view-checkout" class="view">
+        <div class="container">
+            <div class="back-button" onclick="navigateTo('cart')">← Back to Cart</div>
+            <h2 class="section-title">Checkout</h2>
+            <div class="card" style="padding: 24px; margin-top: 24px;">
+                <form id="checkoutForm">
+                    <h3 style="margin-bottom: 16px;">Delivery Address</h3>
+                    <div class="form-group">
+                        <label class="form-label">Full Name</label>
+                        <input type="text" class="form-control" id="deliveryName" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phone Number</label>
+                        <input type="tel" class="form-control" id="deliveryPhone" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Complete Address</label>
+                        <textarea class="form-control" id="deliveryAddress" rows="3" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">City</label>
+                        <input type="text" class="form-control" id="deliveryCity" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Pincode</label>
+                        <input type="text" class="form-control" id="deliveryPincode" pattern="[0-9]{6}" required>
+                    </div>
+                    
+                    <h3 style="margin: 24px 0 16px;">Payment Method</h3>
+                    <div class="form-group">
+                        <select class="form-control" id="paymentMethod">
+                            <option value="cod">Cash on Delivery</option>
+                            <option value="online">Online Payment</option>
+                        </select>
+                    </div>
+                    
+                    <div id="checkoutSummary" style="margin: 24px 0;"></div>
+                    
+                    <button type="submit" class="btn btn--primary btn--full-width btn--lg">Place Order</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard View -->
+    <div id="view-dashboard" class="view">
+        <div class="container">
+            <h2 class="section-title">My Dashboard</h2>
+            <p class="section-subtitle" id="dashboardWelcome">Welcome back!</p>
+            
+            <div class="dashboard-grid">
+                <div class="card dashboard-card">
+                    <h4>My Wallet</h4>
+                    <div class="stat-value" id="walletBalance">₹0</div>
+                </div>
+                <div class="card dashboard-card">
+                    <h4>Items Sold</h4>
+                    <div class="stat-value" id="itemsSold">0</div>
+                </div>
+                <div class="card dashboard-card">
+                    <h4>Items Purchased</h4>
+                    <div class="stat-value" id="itemsPurchased">0</div>
+                </div>
+                <div class="card dashboard-card">
+                    <h4>CO₂ Saved</h4>
+                    <div class="stat-value" id="userCO2">0 kg</div>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 32px; margin-bottom: 16px;">My Sales</h3>
+            <div class="transaction-list" id="salesList"></div>
+
+            <h3 style="margin-top: 32px; margin-bottom: 16px;">My Purchases</h3>
+            <div class="transaction-list" id="purchasesList"></div>
+
+            <div style="margin-top: 32px;">
+                <button class="btn btn--outline" onclick="logout()">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard View -->
+    <div id="view-admin" class="view">
+        <div class="container">
+            <h2 class="section-title">Admin Dashboard</h2>
+            <p class="section-subtitle">Business Overview</p>
+            
+            <div class="dashboard-grid">
+                <div class="card dashboard-card">
+                    <h4>Total Revenue</h4>
+                    <div class="stat-value" id="adminRevenue">₹0</div>
+                </div>
+                <div class="card dashboard-card">
+                    <h4>Items Listed</h4>
+                    <div class="stat-value" id="adminListed">0</div>
+                </div>
+                <div class="card dashboard-card">
+                    <h4>Pending Quotes</h4>
+                    <div class="stat-value" id="adminPending">0</div>
+                </div>
+                <div class="card dashboard-card">
+                    <h4>Customer Satisfaction</h4>
+                    <div class="stat-value" id="adminSatisfaction">0%</div>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 32px; margin-bottom: 16px;">Recent Orders</h3>
+            <div class="transaction-list" id="adminOrders"></div>
+
+            <h3 style="margin-top: 32px; margin-bottom: 16px;">Current Inventory</h3>
+            <div class="product-grid" id="adminInventory"></div>
+        </div>
+    </div>
+
+    <!-- Corporate View -->
+    <div id="view-corporate" class="view">
+        <div class="container">
+            <h2 class="section-title">Corporate &amp; B2B Solutions</h2>
+            <p class="section-subtitle">Sustainable furniture disposal for businesses</p>
+            
+            <div class="card" style="padding: 32px; margin: 24px 0;">
+                <div class="props-grid">
+                    <div>
+                        <div class="prop-icon">🏢</div>
+                        <h3>Bulk Disposal</h3>
+                        <p>Office furniture buyback programs for relocations and upgrades</p>
+                    </div>
+                    <div>
+                        <div class="prop-icon">📊</div>
+                        <h3>ESG Reporting</h3>
+                        <p>Detailed sustainability reports for your environmental disclosures</p>
+                    </div>
+                    <div>
+                        <div class="prop-icon">🤝</div>
+                        <h3>Dedicated Support</h3>
+                        <p>Account manager for seamless coordination</p>
+                    </div>
+                    <div>
+                        <div class="prop-icon">💼</div>
+                        <h3>Custom Contracts</h3>
+                        <p>Flexible terms for ongoing partnerships</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="padding: 32px; margin: 24px 0;">
+                <h3 style="margin-bottom: 16px;">Request Corporate Quote</h3>
+                <form id="corporateForm">
+                    <div class="form-group">
+                        <label class="form-label">Company Name</label>
+                        <input type="text" class="form-control" id="companyName" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Contact Person</label>
+                        <input type="text" class="form-control" id="contactPerson" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" id="corporateEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phone</label>
+                        <input type="tel" class="form-control" id="corporatePhone" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Estimated Furniture Items</label>
+                        <input type="number" class="form-control" id="itemCount" min="10" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Requirements</label>
+                        <textarea class="form-control" id="requirements" rows="4" placeholder="Tell us about your furniture disposal needs" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn--primary btn--full-width">Submit Inquiry</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auth Views -->
+    <div id="view-login" class="view">
+        <div class="auth-container">
+            <div class="back-button" onclick="navigateTo('home')">← Back to Home</div>
+            <div class="auth-form">
+                <h2 style="margin-bottom: 24px; text-align: center;">Login</h2>
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" id="loginEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-control" id="loginPassword" required>
+                    </div>
+                    <button type="submit" class="btn btn--primary btn--full-width">Login</button>
+                </form>
+                <p style="text-align: center; margin-top: 16px;">
+                    Don't have an account? <a href="#" onclick="navigateTo('register'); return false;">Register</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-register" class="view">
+        <div class="auth-container">
+            <div class="back-button" onclick="navigateTo('home')">← Back to Home</div>
+            <div class="auth-form">
+                <h2 style="margin-bottom: 24px; text-align: center;">Register</h2>
+                <form id="registerForm">
+                    <div class="form-group">
+                        <label class="form-label">Full Name</label>
+                        <input type="text" class="form-control" id="registerName" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" id="registerEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phone</label>
+                        <input type="tel" class="form-control" id="registerPhone" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-control" id="registerPassword" required>
+                    </div>
+                    <button type="submit" class="btn btn--primary btn--full-width">Register</button>
+                </form>
+                <p style="text-align: center; margin-top: 16px;">
+                    Already have an account? <a href="#" onclick="navigateTo('login'); return false;">Login</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Toggle Button -->
+    <div class="admin-toggle" onclick="toggleAdminView()" id="adminToggle">
+        👤 Admin View
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>About FurniRecycle</h4>
+                    <p>Transforming the furniture industry through AI-powered recycling and refurbishment. Join us in creating a sustainable future.</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Quick Links</h4>
+                    <a href="#" onclick="navigateTo('home'); return false;">Home</a>
+                    <a href="#" onclick="navigateTo('buy'); return false;">Browse Furniture</a>
+                    <a href="#" onclick="navigateTo('sell-start'); return false;">Sell Furniture</a>
+                    <a href="#" onclick="navigateTo('corporate'); return false;">Corporate</a>
+                </div>
+                <div class="footer-section">
+                    <h4>Contact</h4>
+                    <p>Email: hello@furnirecycle.com</p>
+                    <p>Phone: +91 98765 43210</p>
+                    <p>Mumbai, India</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Follow Us</h4>
+                    <a href="#" target="_blank">Facebook</a>
+                    <a href="#" target="_blank">Twitter</a>
+                    <a href="#" target="_blank">Instagram</a>
+                    <a href="#" target="_blank">LinkedIn</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Data Management (In-Memory)
+const appData = {
+    categories: [
+        { id: 'sofas', name: 'Sofas & Couches', icon: '🛋️' },
+        { id: 'beds', name: 'Beds & Mattresses', icon: '🛏️' },
+        { id: 'chairs', name: 'Chairs & Stools', icon: '🪑' },
+        { id: 'tables', name: 'Tables & Desks', icon: '🪟' },
+        { id: 'cabinets', name: 'Cabinets & Storage', icon: '🗄️' },
+        { id: 'office', name: 'Office Furniture', icon: '🏢' },
+        { id: 'other', name: 'Other', icon: '📦' }
+    ],
+    
+    inventory: [
+        {
+            id: 'FURN001',
+            name: 'Modern Grey Sectional Sofa',
+            category: 'Sofas',
+            condition: 'Refurbished',
+            original_price: 45000,
+            refurbished_price: 22000,
+            materials: [
+                { name: 'Wood Frame', percentage: 30, condition: 'Excellent', estimated_value: 5000 },
+                { name: 'Steel Springs', percentage: 20, condition: 'Good', estimated_value: 3000 },
+                { name: 'Upholstery (Fabric)', percentage: 50, condition: 'Good', estimated_value: 6000 }
+            ],
+            location: 'Mumbai',
+            delivery_available: true,
+            delivery_cost: 1500,
+            delivery_time: '3-5 days',
+            description: 'Premium sectional in modern grey. Reupholstered with high-quality fabric. Perfect condition.',
+            material_detection_notes: 'AI detected premium wood frame, durable steel springs, quality upholstery'
+        },
+        {
+            id: 'FURN002',
+            name: 'Wooden Office Desk',
+            category: 'Tables',
+            condition: 'Like New',
+            original_price: 18000,
+            refurbished_price: 8500,
+            materials: [
+                { name: 'Solid Wood Top', percentage: 60, condition: 'Excellent', estimated_value: 4000 },
+                { name: 'Metal Legs', percentage: 40, condition: 'Excellent', estimated_value: 2500 }
+            ],
+            location: 'Bangalore',
+            delivery_available: true,
+            delivery_cost: 800,
+            delivery_time: '2-3 days',
+            description: 'Premium solid wood office desk with metal frame. Minimal wear, like new condition.',
+            material_detection_notes: 'High-grade wood detected, stainless steel legs'
+        },
+        {
+            id: 'FURN003',
+            name: 'Designer Upcycled Coffee Table',
+            category: 'Tables',
+            condition: 'Premium Upcycled',
+            original_price: 12000,
+            refurbished_price: 7800,
+            materials: [
+                { name: 'Reclaimed Wood', percentage: 70, condition: 'Restored', estimated_value: 4500 },
+                { name: 'Industrial Metal Frame', percentage: 30, condition: 'Excellent', estimated_value: 2000 }
+            ],
+            location: 'Delhi',
+            delivery_available: true,
+            delivery_cost: 600,
+            delivery_time: '4-6 days',
+            description: 'Unique upcycled coffee table made from reclaimed wood and industrial metal. Each piece is one-of-a-kind.',
+            material_detection_notes: 'Reclaimed wood with vintage character, reinforced metal base'
+        },
+        {
+            id: 'FURN004',
+            name: 'Queen Size Bed Frame',
+            category: 'Beds',
+            condition: 'Refurbished',
+            original_price: 35000,
+            refurbished_price: 16500,
+            materials: [
+                { name: 'Wood Frame', percentage: 50, condition: 'Good', estimated_value: 6000 },
+                { name: 'Metal Brackets', percentage: 20, condition: 'Good', estimated_value: 2000 },
+                { name: 'Plywood Base', percentage: 30, condition: 'Good', estimated_value: 3000 }
+            ],
+            location: 'Pune',
+            delivery_available: true,
+            delivery_cost: 1200,
+            delivery_time: '3-4 days',
+            description: 'Sturdy queen-size bed frame. Completely refurbished, tested for durability.',
+            material_detection_notes: 'Hardwood construction with metal reinforcement'
+        }
+    ],
+    
+    testimonials: [
+        {
+            name: 'Rajesh Kumar',
+            city: 'Mumbai',
+            role: 'Homeowner',
+            message: 'Got ₹8000 for my old sofa instantly! The pickup was hassle-free and they paid immediately.',
+            items_sold: 3
+        },
+        {
+            name: 'Priya Singh',
+            city: 'Delhi',
+            role: 'Office Manager',
+            message: 'Disposed of 15 office chairs responsibly. FurniRecycle gave us detailed sustainability reports for our ESG disclosures.',
+            items_sold: 15
+        },
+        {
+            name: 'Amit Patel',
+            city: 'Bangalore',
+            role: 'Interior Designer',
+            message: 'Love their upcycled collection! My clients are impressed with the quality and eco-conscious approach.',
+            items_sold: 1
+        }
+    ],
+    
+    stats: {
+        total_items_processed: 2847,
+        total_material_recycled_kg: 89450,
+        co2_prevented_tonnes: 145,
+        waste_diverted_kg: 127800,
+        trees_saved: 342,
+        community_members: 8934
+    },
+    
+    business_metrics: {
+        total_sales_revenue: 2450000,
+        total_purchases_revenue: 1820000,
+        avg_quote_time_seconds: 45,
+        customer_satisfaction_percent: 94,
+        repeat_customer_percent: 38
+    }
+};
+
+// State Management
+const state = {
+    currentView: 'home',
+    currentUser: null,
+    isAdmin: false,
+    cart: [],
+    sellFlow: {
+        category: null,
+        condition: null,
+        photos: [],
+        details: {},
+        quote: null
+    },
+    filters: {
+        category: '',
+        condition: '',
+        maxPrice: null
+    },
+    users: [
+        {
+            id: 1,
+            name: 'Demo User',
+            email: 'demo@furnirecycle.com',
+            password: 'demo123',
+            phone: '+91 98765 43210',
+            wallet: 15000,
+            sales: [],
+            purchases: [],
+            co2_saved: 45
+        }
+    ],
+    transactions: []
+};
+
+// Navigation
+function navigateTo(view) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    const viewElement = document.getElementById(`view-${view}`);
+    if (viewElement) {
+        viewElement.classList.add('active');
+        state.currentView = view;
+        window.scrollTo(0, 0);
+        
+        // Initialize view-specific content
+        if (view === 'home') initHome();
+        if (view === 'sell-start') initSellStart();
+        if (view === 'buy') initBuy();
+        if (view === 'dashboard') initDashboard();
+        if (view === 'admin') initAdmin();
+        if (view === 'cart') initCart();
+    }
+}
+
+function handleAuthClick() {
+    if (state.currentUser) {
+        navigateTo('dashboard');
+    } else {
+        navigateTo('login');
+    }
+}
+
+function toggleAdminView() {
+    state.isAdmin = !state.isAdmin;
+    const toggle = document.getElementById('adminToggle');
+    if (state.isAdmin) {
+        toggle.textContent = '👤 User View';
+        navigateTo('admin');
+    } else {
+        toggle.textContent = '👤 Admin View';
+        navigateTo('home');
+    }
+}
+
+// Home Initialization
+function initHome() {
+    // Animate stats
+    animateCounter('statItems', appData.stats.total_items_processed);
+    animateCounter('statMaterial', appData.stats.total_material_recycled_kg);
+    animateCounter('statCO2', appData.stats.co2_prevented_tonnes);
+    animateCounter('statTrees', appData.stats.trees_saved);
+    
+    // Render testimonials
+    const grid = document.getElementById('testimonialsGrid');
+    grid.innerHTML = appData.testimonials.map(t => `
+        <div class="card testimonial-card">
+            <div class="testimonial-text">"${t.message}"</div>
+            <div class="testimonial-author">${t.name}</div>
+            <div class="testimonial-meta">${t.role}, ${t.city} • ${t.items_sold} items sold</div>
+        </div>
+    `).join('');
+}
+
+function animateCounter(id, target) {
+    const element = document.getElementById(id);
+    let current = 0;
+    const increment = target / 50;
+    const timer = setInterval(() => {
+        current += increment;
+        if (current >= target) {
+            element.textContent = target.toLocaleString();
+            clearInterval(timer);
+        } else {
+            element.textContent = Math.floor(current).toLocaleString();
+        }
+    }, 20);
+}
+
+// Sell Flow
+function initSellStart() {
+    const grid = document.getElementById('categoryGrid');
+    grid.innerHTML = appData.categories.map(cat => `
+        <div class="card category-card" onclick="selectCategory('${cat.id}', '${cat.name}')">
+            <div class="category-icon">${cat.icon}</div>
+            <div>${cat.name}</div>
+        </div>
+    `).join('');
+}
+
+function selectCategory(id, name) {
+    state.sellFlow.category = { id, name };
+    navigateTo('sell-condition');
+}
+
+function selectCondition(condition) {
+    state.sellFlow.condition = condition;
+    navigateTo('sell-upload');
+}
+
+function handleFileSelect(event) {
+    const files = Array.from(event.target.files);
+    const maxFiles = 5;
+    
+    if (state.sellFlow.photos.length + files.length > maxFiles) {
+        alert(`You can upload maximum ${maxFiles} photos`);
+        return;
+    }
+    
+    files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            state.sellFlow.photos.push(e.target.result);
+            renderPhotoPreviews();
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+function renderPhotoPreviews() {
+    const grid = document.getElementById('previewGrid');
+    grid.innerHTML = state.sellFlow.photos.map((photo, index) => `
+        <div class="preview-item">
+            <img src="${photo}" alt="Preview" class="preview-image">
+            <button class="remove-preview" onclick="removePhoto(${index})">×</button>
+        </div>
+    `).join('');
+    
+    document.getElementById('continueUploadBtn').disabled = state.sellFlow.photos.length === 0;
+}
+
+function removePhoto(index) {
+    state.sellFlow.photos.splice(index, 1);
+    renderPhotoPreviews();
+}
+
+// Details Form
+document.addEventListener('DOMContentLoaded', () => {
+    const detailsForm = document.getElementById('detailsForm');
+    if (detailsForm) {
+        detailsForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            state.sellFlow.details = {
+                dimensions: document.getElementById('dimensions').value,
+                color: document.getElementById('color').value,
+                brand: document.getElementById('brand').value,
+                age: document.getElementById('age').value,
+                materialType: document.getElementById('materialType').value,
+                location: document.getElementById('location').value
+            };
+            calculateQuote();
+        });
+    }
+});
+
+function calculateQuote() {
+    // AI-powered quote calculation
+    const basePrice = {
+        'excellent': 1.0,
+        'good': 0.7,
+        'fair': 0.4,
+        'repair': 0.2
+    }[state.sellFlow.condition];
+    
+    const categoryMultiplier = {
+        'sofas': 8000,
+        'beds': 6000,
+        'chairs': 3000,
+        'tables': 5000,
+        'cabinets': 4000,
+        'office': 5500,
+        'other': 3500
+    }[state.sellFlow.category.id];
+    
+    const ageDiscount = Math.max(0.5, 1 - (parseInt(state.sellFlow.details.age) * 0.05));
+    const finalPrice = Math.floor(categoryMultiplier * basePrice * ageDiscount);
+    
+    // Generate material breakdown
+    const materials = generateMaterialBreakdown(state.sellFlow.details.materialType, finalPrice);
+    
+    state.sellFlow.quote = {
+        amount: finalPrice,
+        materials: materials
+    };
+    
+    displayQuote();
+}
+
+function generateMaterialBreakdown(materialType, totalPrice) {
+    const templates = {
+        'wood': [
+            { name: 'Wood Frame', percentage: 70, condition: 'Good', value: totalPrice * 0.5 },
+            { name: 'Metal Fittings', percentage: 20, condition: 'Fair', value: totalPrice * 0.3 },
+            { name: 'Other Materials', percentage: 10, condition: 'Fair', value: totalPrice * 0.2 }
+        ],
+        'metal': [
+            { name: 'Steel Frame', percentage: 60, condition: 'Good', value: totalPrice * 0.6 },
+            { name: 'Other Metals', percentage: 30, condition: 'Good', value: totalPrice * 0.3 },
+            { name: 'Finishing Materials', percentage: 10, condition: 'Fair', value: totalPrice * 0.1 }
+        ],
+        'upholstered': [
+            { name: 'Wood Frame', percentage: 30, condition: 'Good', value: totalPrice * 0.3 },
+            { name: 'Upholstery Fabric', percentage: 50, condition: 'Fair', value: totalPrice * 0.4 },
+            { name: 'Foam/Padding', percentage: 20, condition: 'Fair', value: totalPrice * 0.3 }
+        ],
+        'mixed': [
+            { name: 'Wood', percentage: 40, condition: 'Good', value: totalPrice * 0.4 },
+            { name: 'Metal', percentage: 30, condition: 'Good', value: totalPrice * 0.35 },
+            { name: 'Other Materials', percentage: 30, condition: 'Fair', value: totalPrice * 0.25 }
+        ]
+    };
+    
+    return templates[materialType] || templates['mixed'];
+}
+
+function displayQuote() {
+    document.getElementById('quoteAmount').textContent = `₹${state.sellFlow.quote.amount.toLocaleString()}`;
+    
+    const breakdown = document.getElementById('materialBreakdown');
+    breakdown.innerHTML = state.sellFlow.quote.materials.map(m => `
+        <div class="material-item">
+            <div>
+                <strong>${m.name}</strong> (${m.percentage}%)
+                <div style="font-size: 12px; color: var(--color-text-secondary);">${m.condition} condition</div>
+            </div>
+            <div style="font-weight: 600;">₹${Math.floor(m.value).toLocaleString()}</div>
+        </div>
+    `).join('');
+    
+    // Set minimum date to tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById('pickupDate').min = tomorrow.toISOString().split('T')[0];
+    
+    navigateTo('sell-quote');
+}
+
+function confirmBooking() {
+    const pickupDate = document.getElementById('pickupDate').value;
+    const pickupAddress = document.getElementById('pickupAddress').value;
+    
+    if (!pickupDate || !pickupAddress) {
+        alert('Please fill in all booking details');
+        return;
+    }
+    
+    const orderId = 'ORD' + Date.now();
+    const transaction = {
+        id: orderId,
+        type: 'sale',
+        category: state.sellFlow.category.name,
+        condition: state.sellFlow.condition,
+        amount: state.sellFlow.quote.amount,
+        materials: state.sellFlow.quote.materials,
+        pickupDate: pickupDate,
+        pickupAddress: pickupAddress,
+        status: 'Scheduled',
+        date: new Date().toISOString()
+    };
+    
+    state.transactions.push(transaction);
+    
+    if (state.currentUser) {
+        state.currentUser.sales.push(transaction);
+        state.currentUser.wallet += transaction.amount;
+    }
+    
+    // Reset sell flow
+    state.sellFlow = {
+        category: null,
+        condition: null,
+        photos: [],
+        details: {},
+        quote: null
+    };
+    
+    alert(`Booking confirmed! Order ID: ${orderId}\n\nYour furniture pickup is scheduled for ${pickupDate}. Payment of ₹${transaction.amount.toLocaleString()} will be made upon collection.`);
+    navigateTo('home');
+}
+
+// Buy Flow
+function initBuy() {
+    applyFilters();
+}
+
+function applyFilters() {
+    state.filters.category = document.getElementById('filterCategory').value;
+    state.filters.condition = document.getElementById('filterCondition').value;
+    state.filters.maxPrice = document.getElementById('filterPrice').value ? parseInt(document.getElementById('filterPrice').value) : null;
+    
+    let filtered = appData.inventory;
+    
+    if (state.filters.category) {
+        filtered = filtered.filter(p => p.category === state.filters.category);
+    }
+    
+    if (state.filters.condition) {
+        filtered = filtered.filter(p => p.condition === state.filters.condition);
+    }
+    
+    if (state.filters.maxPrice) {
+        filtered = filtered.filter(p => p.refurbished_price <= state.filters.maxPrice);
+    }
+    
+    renderProducts(filtered);
+}
+
+function renderProducts(products) {
+    const grid = document.getElementById('productGrid');
+    if (products.length === 0) {
+        grid.innerHTML = '<p style="text-align: center; padding: 48px;">No products found matching your filters.</p>';
+        return;
+    }
+    
+    grid.innerHTML = products.map(p => {
+        const savings = Math.round(((p.original_price - p.refurbished_price) / p.original_price) * 100);
+        return `
+            <div class="card product-card" onclick="viewProduct('${p.id}')">
+                <div class="product-image">🪑</div>
+                <div class="product-info">
+                    <div class="product-name">${p.name}</div>
+                    <span class="product-condition">${p.condition}</span>
+                    <div class="product-price">
+                        <span class="price-current">₹${p.refurbished_price.toLocaleString()}</span>
+                        <span class="price-original">₹${p.original_price.toLocaleString()}</span>
+                    </div>
+                    <div class="savings">Save ${savings}%</div>
+                    <div style="margin-top: 12px; font-size: 12px; color: var(--color-text-secondary);">
+                        📍 ${p.location} • ${p.delivery_time}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function viewProduct(productId) {
+    const product = appData.inventory.find(p => p.id === productId);
+    if (!product) return;
+    
+    const savings = Math.round(((product.original_price - product.refurbished_price) / product.original_price) * 100);
+    const content = document.getElementById('productDetailContent');
+    content.innerHTML = `
+        <div class="card" style="padding: 32px; margin-top: 24px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px;">
+                <div>
+                    <div class="product-image" style="height: 400px; font-size: 128px;">🪑</div>
+                </div>
+                <div>
+                    <h2>${product.name}</h2>
+                    <span class="product-condition" style="margin: 16px 0; display: inline-block;">${product.condition}</span>
+                    
+                    <div class="product-price" style="margin: 16px 0;">
+                        <span class="price-current">₹${product.refurbished_price.toLocaleString()}</span>
+                        <span class="price-original">₹${product.original_price.toLocaleString()}</span>
+                    </div>
+                    <div class="savings" style="margin-bottom: 24px;">Save ${savings}% • ₹${(product.original_price - product.refurbished_price).toLocaleString()} off</div>
+                    
+                    <p style="margin-bottom: 24px;">${product.description}</p>
+                    
+                    <div style="margin-bottom: 16px;">
+                        <strong>Delivery:</strong> ${product.delivery_time} • ₹${product.delivery_cost.toLocaleString()}
+                    </div>
+                    <div style="margin-bottom: 24px;">
+                        <strong>Location:</strong> ${product.location}
+                    </div>
+                    
+                    <button class="btn btn--primary btn--full-width btn--lg" onclick="addToCart('${product.id}')">Add to Cart</button>
+                </div>
+            </div>
+            
+            <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--color-card-border);">
+                <h3 style="margin-bottom: 16px;">AI Material Detection Results</h3>
+                <p style="color: var(--color-text-secondary); margin-bottom: 16px;">${product.material_detection_notes}</p>
+                ${product.materials.map(m => `
+                    <div class="material-item">
+                        <div>
+                            <strong>${m.name}</strong>
+                            <div style="font-size: 12px; color: var(--color-text-secondary);">${m.percentage}% • ${m.condition} condition</div>
+                        </div>
+                        <div style="font-weight: 600;">₹${m.estimated_value.toLocaleString()}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+    
+    navigateTo('product-detail');
+}
+
+function addToCart(productId) {
+    const product = appData.inventory.find(p => p.id === productId);
+    if (!product) return;
+    
+    const existing = state.cart.find(item => item.id === productId);
+    if (existing) {
+        alert('This item is already in your cart');
+        return;
+    }
+    
+    state.cart.push({ ...product, quantity: 1 });
+    updateCartBadge();
+    alert('Added to cart!');
+}
+
+function updateCartBadge() {
+    const cartLink = document.getElementById('cartLink');
+    const cartCount = document.getElementById('cartCount');
+    cartCount.textContent = state.cart.length;
+    cartLink.style.display = state.cart.length > 0 ? 'block' : 'none';
+}
+
+function initCart() {
+    const cartItems = document.getElementById('cartItems');
+    const cartSummary = document.getElementById('cartSummary');
+    
+    if (state.cart.length === 0) {
+        cartItems.innerHTML = '<p style="text-align: center; padding: 48px;">Your cart is empty</p>';
+        cartSummary.innerHTML = '';
+        return;
+    }
+    
+    cartItems.innerHTML = state.cart.map((item, index) => `
+        <div class="cart-item">
+            <div class="cart-item-image">🪑</div>
+            <div class="cart-item-details">
+                <h4>${item.name}</h4>
+                <div style="color: var(--color-text-secondary); margin: 8px 0;">${item.condition}</div>
+                <div style="font-weight: 600; font-size: 18px;">₹${item.refurbished_price.toLocaleString()}</div>
+                <div style="font-size: 12px; margin-top: 4px;">Delivery: ₹${item.delivery_cost.toLocaleString()}</div>
+            </div>
+            <div class="cart-item-remove" onclick="removeFromCart(${index})">Remove</div>
+        </div>
+    `).join('');
+    
+    const subtotal = state.cart.reduce((sum, item) => sum + item.refurbished_price, 0);
+    const deliveryTotal = state.cart.reduce((sum, item) => sum + item.delivery_cost, 0);
+    const total = subtotal + deliveryTotal;
+    
+    cartSummary.innerHTML = `
+        <h3 style="margin-bottom: 16px;">Order Summary</h3>
+        <div class="summary-row">
+            <span>Subtotal</span>
+            <span>₹${subtotal.toLocaleString()}</span>
+        </div>
+        <div class="summary-row">
+            <span>Delivery Charges</span>
+            <span>₹${deliveryTotal.toLocaleString()}</span>
+        </div>
+        <div class="summary-row total">
+            <span>Total</span>
+            <span>₹${total.toLocaleString()}</span>
+        </div>
+        <button class="btn btn--primary btn--full-width" style="margin-top: 24px;" onclick="navigateTo('checkout')">Proceed to Checkout</button>
+    `;
+}
+
+function removeFromCart(index) {
+    state.cart.splice(index, 1);
+    updateCartBadge();
+    initCart();
+}
+
+// Checkout
+document.addEventListener('DOMContentLoaded', () => {
+    const checkoutForm = document.getElementById('checkoutForm');
+    if (checkoutForm) {
+        checkoutForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            processOrder();
+        });
+    }
+});
+
+function processOrder() {
+    const subtotal = state.cart.reduce((sum, item) => sum + item.refurbished_price, 0);
+    const deliveryTotal = state.cart.reduce((sum, item) => sum + item.delivery_cost, 0);
+    const total = subtotal + deliveryTotal;
+    
+    const orderId = 'PUR' + Date.now();
+    const order = {
+        id: orderId,
+        type: 'purchase',
+        items: [...state.cart],
+        subtotal: subtotal,
+        delivery: deliveryTotal,
+        total: total,
+        deliveryAddress: {
+            name: document.getElementById('deliveryName').value,
+            phone: document.getElementById('deliveryPhone').value,
+            address: document.getElementById('deliveryAddress').value,
+            city: document.getElementById('deliveryCity').value,
+            pincode: document.getElementById('deliveryPincode').value
+        },
+        paymentMethod: document.getElementById('paymentMethod').value,
+        status: 'Confirmed',
+        date: new Date().toISOString()
+    };
+    
+    state.transactions.push(order);
+    
+    if (state.currentUser) {
+        state.currentUser.purchases.push(order);
+    }
+    
+    // Clear cart
+    state.cart = [];
+    updateCartBadge();
+    
+    alert(`Order placed successfully!\n\nOrder ID: ${orderId}\nTotal: ₹${total.toLocaleString()}\n\nYour furniture will be delivered in 3-5 business days.`);
+    navigateTo('home');
+}
+
+// Dashboard
+function initDashboard() {
+    if (!state.currentUser) {
+        navigateTo('login');
+        return;
+    }
+    
+    document.getElementById('dashboardWelcome').textContent = `Welcome back, ${state.currentUser.name}!`;
+    document.getElementById('walletBalance').textContent = `₹${state.currentUser.wallet.toLocaleString()}`;
+    document.getElementById('itemsSold').textContent = state.currentUser.sales.length;
+    document.getElementById('itemsPurchased').textContent = state.currentUser.purchases.length;
+    document.getElementById('userCO2').textContent = `${state.currentUser.co2_saved} kg`;
+    
+    const salesList = document.getElementById('salesList');
+    if (state.currentUser.sales.length === 0) {
+        salesList.innerHTML = '<p style="text-align: center; padding: 24px; color: var(--color-text-secondary);">No sales yet</p>';
+    } else {
+        salesList.innerHTML = state.currentUser.sales.map(sale => `
+            <div class="transaction-item">
+                <div class="transaction-header">
+                    <strong>${sale.category}</strong>
+                    <span style="color: var(--color-success);">+₹${sale.amount.toLocaleString()}</span>
+                </div>
+                <div style="font-size: 12px; color: var(--color-text-secondary);">
+                    ${new Date(sale.date).toLocaleDateString()} • ${sale.status}
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    const purchasesList = document.getElementById('purchasesList');
+    if (state.currentUser.purchases.length === 0) {
+        purchasesList.innerHTML = '<p style="text-align: center; padding: 24px; color: var(--color-text-secondary);">No purchases yet</p>';
+    } else {
+        purchasesList.innerHTML = state.currentUser.purchases.map(purchase => `
+            <div class="transaction-item">
+                <div class="transaction-header">
+                    <strong>Order ${purchase.id}</strong>
+                    <span>₹${purchase.total.toLocaleString()}</span>
+                </div>
+                <div style="font-size: 12px; color: var(--color-text-secondary); margin-top: 4px;">
+                    ${purchase.items.length} items • ${new Date(purchase.date).toLocaleDateString()} • ${purchase.status}
+                </div>
+            </div>
+        `).join('');
+    }
+}
+
+// Admin Dashboard
+function initAdmin() {
+    document.getElementById('adminRevenue').textContent = `₹${(appData.business_metrics.total_sales_revenue + appData.business_metrics.total_purchases_revenue).toLocaleString()}`;
+    document.getElementById('adminListed').textContent = appData.inventory.length;
+    document.getElementById('adminPending').textContent = state.transactions.filter(t => t.status === 'Scheduled').length;
+    document.getElementById('adminSatisfaction').textContent = `${appData.business_metrics.customer_satisfaction_percent}%`;
+    
+    const adminOrders = document.getElementById('adminOrders');
+    const recentTransactions = state.transactions.slice(-5).reverse();
+    adminOrders.innerHTML = recentTransactions.map(t => `
+        <div class="transaction-item">
+            <div class="transaction-header">
+                <strong>${t.type === 'sale' ? 'Sale' : 'Purchase'}: ${t.id}</strong>
+                <span style="color: ${t.type === 'sale' ? 'var(--color-error)' : 'var(--color-success)'};">
+                    ${t.type === 'sale' ? '-' : '+'}₹${(t.amount || t.total).toLocaleString()}
+                </span>
+            </div>
+            <div style="font-size: 12px; color: var(--color-text-secondary); margin-top: 4px;">
+                ${new Date(t.date).toLocaleDateString()} • ${t.status}
+            </div>
+        </div>
+    `).join('');
+    
+    const adminInventory = document.getElementById('adminInventory');
+    adminInventory.innerHTML = appData.inventory.map(p => `
+        <div class="card product-card">
+            <div class="product-image">🪑</div>
+            <div class="product-info">
+                <div class="product-name">${p.name}</div>
+                <span class="product-condition">${p.condition}</span>
+                <div class="product-price">
+                    <span class="price-current">₹${p.refurbished_price.toLocaleString()}</span>
+                </div>
+                <div style="margin-top: 12px; font-size: 12px;">
+                    ${p.materials.map(m => `<span class="material-tag">${m.name}</span>`).join('')}
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Auth
+document.addEventListener('DOMContentLoaded', () => {
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            const user = state.users.find(u => u.email === email && u.password === password);
+            if (user) {
+                state.currentUser = user;
+                updateAuthUI();
+                navigateTo('dashboard');
+            } else {
+                alert('Invalid email or password');
+            }
+        });
+    }
+    
+    const registerForm = document.getElementById('registerForm');
+    if (registerForm) {
+        registerForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = document.getElementById('registerEmail').value;
+            
+            if (state.users.find(u => u.email === email)) {
+                alert('Email already registered');
+                return;
+            }
+            
+            const newUser = {
+                id: state.users.length + 1,
+                name: document.getElementById('registerName').value,
+                email: email,
+                password: document.getElementById('registerPassword').value,
+                phone: document.getElementById('registerPhone').value,
+                wallet: 0,
+                sales: [],
+                purchases: [],
+                co2_saved: 0
+            };
+            
+            state.users.push(newUser);
+            state.currentUser = newUser;
+            updateAuthUI();
+            navigateTo('dashboard');
+        });
+    }
+    
+    const corporateForm = document.getElementById('corporateForm');
+    if (corporateForm) {
+        corporateForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            alert('Thank you for your inquiry! Our corporate team will contact you within 24 hours.');
+            corporateForm.reset();
+        });
+    }
+});
+
+function updateAuthUI() {
+    const authLink = document.getElementById('authLink');
+    if (state.currentUser) {
+        authLink.textContent = state.currentUser.name;
+    } else {
+        authLink.textContent = 'Login';
+    }
+}
+
+function logout() {
+    state.currentUser = null;
+    updateAuthUI();
+    navigateTo('home');
+}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', () => {
+    initHome();
+    updateAuthUI();
+    updateCartBadge();
+});
+    </script>
+</body>
+</html>
