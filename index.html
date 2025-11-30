@@ -1015,6 +1015,45 @@ a:hover { color: var(--color-primary-hover); }
   margin-bottom: var(--space-4);
 }
     </style>
+      <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+    
+    // Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyDgyy_678IPetexpSBWAFqEINYQNYFgBAc",
+      authDomain: "furnirecycle.firebaseapp.com",
+      projectId: "furnirecycle",
+      storageBucket: "furnirecycle.firebasestorage.app",
+      messagingSenderId: "778692894156",
+      appId: "1:778692894156:web:a2a92fb9a52ba9c5a61169"
+    };
+    
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    
+    // Make Firebase services globally available for the app
+    window.firebaseAuth = auth;
+    window.firebaseDb = db;
+    window.firebaseModule = {
+      createUserWithEmailAndPassword,
+      signInWithEmailAndPassword,
+      onAuthStateChanged,
+      signOut,
+      doc,
+      setDoc,
+      getDoc,
+      collection,
+      addDoc,
+      query,
+      where,
+      getDocs
+    };
+  </script>
 </head>
 <body>
     <!-- Header -->
