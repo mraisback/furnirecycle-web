@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Merge PDF - Python</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Merge PDF</h1>
+      <p class="subtitle">Upload multiple PDFs, reorder them, and download one merged file.</p>
+
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          <div class="alert">
+            {% for message in messages %}
+              <p>{{ message }}</p>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <form id="mergeForm" action="{{ url_for('merge') }}" method="post" enctype="multipart/form-data">
+        <label for="pdfs" class="upload-label">Select PDF files (max {{ max_files }})</label>
+        <input id="pdfs" type="file" name="pdfs" accept="application/pdf" multiple required />
+
+        <input type="hidden" name="order" id="order" />
+
+        <h2>File order</h2>
+        <ul id="fileList" class="file-list"></ul>
+
+        <button type="submit" class="btn-primary">Merge PDF</button>
+      </form>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
