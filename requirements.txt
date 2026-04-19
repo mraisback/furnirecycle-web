@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg[binary]
+asyncpg
+pydantic-settings
+pandas
+numpy
+networkx
+pulp
+matplotlib
+seaborn
