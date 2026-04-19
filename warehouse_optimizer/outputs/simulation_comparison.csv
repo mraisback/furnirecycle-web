@@ -1,0 +1,7 @@
+metric,baseline,optimised,delta,improvement_pct
+total_distance_m,49059.0,11832.0,-37227.0,-75.9
+mean_distance_m,108.54,26.18,-82.36,-75.9
+total_picks,2009.0,2009.0,0.0,0.0
+total_time_s,56954.5,25932.0,-31022.5,-54.5
+throughput_orders_h,28.57,62.75,34.18,119.6
+throughput_picks_h,126.99,278.9,151.91,119.6
