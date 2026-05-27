@@ -2,6 +2,12 @@ import pandas as pd
 from typing import Optional
 
 
+def _col_sum(df: Optional[pd.DataFrame], col: str) -> float:
+    if df is None or df.empty or col not in df.columns:
+        return 0.0
+    return pd.to_numeric(df[col], errors="coerce").fillna(0).sum()
+
+
 def compute_error_log(orders, despatch, returns, receiving, inventory, inventory_accuracy) -> pd.DataFrame:
     rows = []
 
@@ -10,10 +16,10 @@ def compute_error_log(orders, despatch, returns, receiving, inventory, inventory
     if despatch is not None and "Lot_No_Status" in despatch.columns:
         missing_batch = int((despatch["Lot_No_Status"] == "MISSING BATCH").sum())
     rows.append({
-        "Error Type":       "Missing Batch / Lot_No",
-        "Count":            missing_batch,
-        "Severity":         "HIGH",
-        "Action Required":  "Verify batch before dispatch",
+        "Error Type":      "Missing Batch / Lot_No",
+        "Count":           missing_batch,
+        "Severity":        "HIGH",
+        "Action Required": "Verify batch before dispatch",
     })
 
     # 2. Duplicate Invoice No in orders
@@ -22,10 +28,10 @@ def compute_error_log(orders, despatch, returns, receiving, inventory, inventory
         counts = orders["Order_No"].value_counts()
         dup_invoices = int((counts > 1).sum())
     rows.append({
-        "Error Type":       "Duplicate Invoice No",
-        "Count":            dup_invoices,
-        "Severity":         "HIGH",
-        "Action Required":  "Check SAP export for duplicates",
+        "Error Type":      "Duplicate Invoice No",
+        "Count":           dup_invoices,
+        "Severity":        "HIGH",
+        "Action Required": "Check SAP export for duplicates",
     })
 
     # 3. Near Expiry ≤30 days
@@ -33,10 +39,10 @@ def compute_error_log(orders, despatch, returns, receiving, inventory, inventory
     if inventory is not None and "Expiry_Risk" in inventory.columns:
         near_expiry = int((inventory["Expiry_Risk"] == "0-30 Days").sum())
     rows.append({
-        "Error Type":       "Near Expiry (≤30 days)",
-        "Count":            near_expiry,
-        "Severity":         "MEDIUM",
-        "Action Required":  "Prioritise FEFO picking",
+        "Error Type":      "Near Expiry (≤30 days)",
+        "Count":           near_expiry,
+        "Severity":        "MEDIUM",
+        "Action Required": "Prioritise FEFO picking",
     })
 
     # 4. Inventory accuracy < 95%
@@ -44,26 +50,23 @@ def compute_error_log(orders, despatch, returns, receiving, inventory, inventory
     if inventory_accuracy is not None and "Accuracy_%" in inventory_accuracy.columns:
         low_accuracy = int((inventory_accuracy["Accuracy_%"] < 95.0).sum())
     rows.append({
-        "Error Type":       "Inventory Accuracy < 95%",
-        "Count":            low_accuracy,
-        "Severity":         "MEDIUM",
-        "Action Required":  "Schedule cycle count",
+        "Error Type":      "Inventory Accuracy < 95%",
+        "Count":           low_accuracy,
+        "Severity":        "MEDIUM",
+        "Action Required": "Schedule cycle count",
     })
 
     # 5. Return Rate > 5%
     return_rate_flag = 0
-    if despatch is not None and returns is not None:
-        total_disp = pd.to_numeric(despatch.get("Cases_Despatched", pd.Series([0])),
-                                   errors="coerce").sum() if despatch is not None else 0
-        total_ret  = pd.to_numeric(returns.get("Returned_Cases", pd.Series([0])),
-                                   errors="coerce").sum() if returns is not None else 0
-        if total_disp > 0 and (total_ret / total_disp * 100) > 5:
-            return_rate_flag = 1
+    total_disp = _col_sum(despatch, "Cases_Despatched")
+    total_ret  = _col_sum(returns, "Returned_Cases")
+    if total_disp > 0 and (total_ret / total_disp * 100) > 5:
+        return_rate_flag = 1
     rows.append({
-        "Error Type":       "Return Rate > 5%",
-        "Count":            return_rate_flag,
-        "Severity":         "HIGH",
-        "Action Required":  "Escalate to ops manager",
+        "Error Type":      "Return Rate > 5%",
+        "Count":           return_rate_flag,
+        "Severity":        "HIGH",
+        "Action Required": "Escalate to ops manager",
     })
 
     # 6. Missing Lot on Returns
@@ -71,14 +74,14 @@ def compute_error_log(orders, despatch, returns, receiving, inventory, inventory
     if returns is not None and "Lot_No" in returns.columns:
         missing_return_lot = int(
             returns["Lot_No"].apply(
-                lambda x: pd.isna(x) or str(x).strip() == ""
+                lambda x: pd.isna(x) or str(x).strip() in ("", "nan", "None")
             ).sum()
         )
     rows.append({
-        "Error Type":       "Missing Lot on Returns",
-        "Count":            missing_return_lot,
-        "Severity":         "LOW",
-        "Action Required":  "Capture batch on all credit notes",
+        "Error Type":      "Missing Lot on Returns",
+        "Count":           missing_return_lot,
+        "Severity":        "LOW",
+        "Action Required": "Capture batch on all credit notes",
     })
 
     return pd.DataFrame(rows)
