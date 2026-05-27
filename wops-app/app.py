@@ -109,28 +109,34 @@ inventory    = dfs["inventory"]
 inv_accuracy = dfs["inventory_accuracy"]
 transport    = dfs["transport"]
 
-# Populate Plant dropdown with real plant codes (or names if Master_WH was provided)
-# Build name_map for display
-from src.filters import build_zone_map_from_master
+# Plant dropdown — use built-in PLANT_NAME_MAP; FILE 4 overrides if uploaded
+from src.filters import build_zone_map_from_master, PLANT_NAME_MAP
 from src.data_loader import load_master_wh
 
-plant_name_map: dict = {}
+# Start with built-in map; merge FILE 4 overrides on top
+plant_name_map: dict = dict(PLANT_NAME_MAP)
 if mwh_bytes:
     mwh_df, _ = load_master_wh(mwh_bytes)
-    _, plant_name_map = build_zone_map_from_master(mwh_df)
+    _, override = build_zone_map_from_master(mwh_df)
+    plant_name_map.update(override)
 
 def plant_display(code: str) -> str:
-    return plant_name_map.get(str(code), str(code)) if plant_name_map else str(code)
+    key = str(code).strip().replace(".0", "")
+    name = plant_name_map.get(key, "")
+    return f"{name} ({key})" if name else key
 
 all_plant_codes = []
 if orders is not None and "Plant" in orders.columns:
-    all_plant_codes = sorted(orders["Plant"].dropna().unique().tolist(), key=str)
+    from src.filters import _norm_plant_key
+    all_plant_codes = sorted(
+        {_norm_plant_key(p) for p in orders["Plant"].dropna() if _norm_plant_key(p)},
+        key=lambda x: int(x) if x.isdigit() else x,
+    )
 
 plant_display_options = ["All Plants"] + [plant_display(p) for p in all_plant_codes]
-plant_code_options    = ["All Plants"] + list(map(str, all_plant_codes))
+plant_code_options    = ["All Plants"] + all_plant_codes
 
 plant_sel_disp = st.sidebar.selectbox("Plant", plant_display_options, key="plant_sel_real")
-# Map display name back to code for filtering
 if plant_sel_disp == "All Plants":
     plant_sel = "All Plants"
 else:
