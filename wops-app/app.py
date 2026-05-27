@@ -50,30 +50,35 @@ with st.sidebar:
 
     all_types = get_transaction_types(raw_zsd)
 
-    with st.expander("⚙ Column Mapping", expanded=not bool(all_types)):
-        if not all_types:
-            st.warning("No 'Transaction Typ Desc' column found in FILE 1.")
+    # Seed session-state defaults only when the file changes — never pass default= alongside
+    # key= in st.multiselect, as Streamlit re-applies default= on every rerun, resetting the
+    # user's selections.
+    _file_hash = hash(zsd_bytes)
+    if st.session_state.get("_zsd_hash") != _file_hash:
+        st.session_state["_zsd_hash"]   = _file_hash
+        st.session_state["inv_types"]   = [t for t in all_types if any(
+            k in t.upper() for k in ["INVOICE", "BILLING", "F2", "ZF2", "F8"])]
+        st.session_state["cred_types"]  = [t for t in all_types if
+            "CREDIT" in t.upper() or t.upper() in ("RE", "REN", "RE2")]
+        st.session_state["ch_types"]    = [t for t in all_types if
+            "CHALLAN" in t.upper() or "DELIVERY" in t.upper()]
 
+    # Always expanded so interactions inside don't collapse the widget on rerun
+    with st.expander("⚙ Column Mapping", expanded=True):
+        if not all_types:
+            st.warning("⚠ No transaction types detected. Check sheet/column names.")
+        else:
+            st.caption(f"{len(all_types)} transaction type(s) found in FILE 1")
+
+        # NO default= parameter here — session state (set above) drives the value
         invoice_types = st.multiselect(
-            "Invoice / Billing types",
-            all_types,
-            default=[t for t in all_types if any(k in t.upper() for k in
-                     ["INVOICE", "BILLING", "F2", "ZF2", "F8"])],
-            key="inv_types",
+            "Invoice / Billing types", all_types, key="inv_types",
         )
         credit_types = st.multiselect(
-            "Credit Note types",
-            all_types,
-            default=[t for t in all_types
-                     if "CREDIT" in t.upper() or t.upper() in ("RE", "REN", "RE2")],
-            key="cred_types",
+            "Credit Note types", all_types, key="cred_types",
         )
         challan_types = st.multiselect(
-            "Delivery Challan types",
-            all_types,
-            default=[t for t in all_types
-                     if "CHALLAN" in t.upper() or "DELIVERY" in t.upper()],
-            key="ch_types",
+            "Delivery Challan types", all_types, key="ch_types",
         )
 
     st.markdown("---")
