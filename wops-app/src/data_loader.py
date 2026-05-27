@@ -1,3 +1,4 @@
+import io
 import pandas as pd
 import streamlit as st
 from typing import Optional, Tuple
@@ -10,18 +11,24 @@ def _strip_strings(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _read_first_sheet(file_bytes: bytes, preferred_names: list) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
+def _to_buffer(file_bytes: bytes) -> io.BytesIO:
+    """Wrap raw bytes in a BytesIO buffer so pd.read_excel accepts it."""
+    return io.BytesIO(file_bytes)
+
+
+def _read_first_sheet(
+    file_bytes: bytes, preferred_names: list
+) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
     """Try each sheet name in order, then fall back to the first sheet."""
-    last_err = ""
     for sheet in preferred_names:
         try:
-            df = pd.read_excel(file_bytes, sheet_name=sheet, engine="openpyxl")
+            df = pd.read_excel(_to_buffer(file_bytes), sheet_name=sheet, engine="openpyxl")
             return _strip_strings(df), None
-        except Exception as e:
-            last_err = str(e)
-    # Last resort: load by index 0 (whatever the first sheet is)
+        except Exception:
+            pass
+    # Last resort: load whichever sheet is first (index 0)
     try:
-        df = pd.read_excel(file_bytes, sheet_name=0, engine="openpyxl")
+        df = pd.read_excel(_to_buffer(file_bytes), sheet_name=0, engine="openpyxl")
         return _strip_strings(df), None
     except Exception as e:
         return None, str(e)
@@ -39,23 +46,24 @@ def load_nysd(file_bytes: bytes) -> Tuple[Optional[pd.DataFrame], Optional[str]]
 
 @st.cache_data(show_spinner=False)
 def load_transport(file_bytes: bytes) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
-    try:
-        df = pd.read_excel(file_bytes, sheet_name="Sheet1", engine="openpyxl", header=0)
-        return _strip_strings(df), None
-    except Exception as e:
-        return None, str(e)
+    return _read_first_sheet(file_bytes, ["Sheet1", "YTFPN", "Transport", "Sheet 1"])
 
 
 @st.cache_data(show_spinner=False)
 def load_master_wh(file_bytes: bytes) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
     """Load Master_WH sheet from WOPS dashboard xlsx or a standalone file."""
-    for sheet in ["Master_WH", "Master WH", "MasterWH", "Sheet1"]:
+    for sheet in ["Master_WH", "Master WH", "MasterWH", "Sheet1", "Sheet 1"]:
         try:
-            df = pd.read_excel(file_bytes, sheet_name=sheet, engine="openpyxl")
+            df = pd.read_excel(_to_buffer(file_bytes), sheet_name=sheet, engine="openpyxl")
             return _strip_strings(df), None
         except Exception:
             continue
-    return None, "Could not find Master_WH sheet"
+    # Fall back to first sheet
+    try:
+        df = pd.read_excel(_to_buffer(file_bytes), sheet_name=0, engine="openpyxl")
+        return _strip_strings(df), None
+    except Exception as e:
+        return None, str(e)
 
 
 def get_transaction_types(df: Optional[pd.DataFrame]) -> list:
