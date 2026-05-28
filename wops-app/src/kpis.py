@@ -16,19 +16,20 @@ def _safe_nunique(df: Optional[pd.DataFrame], col: str) -> int:
 
 
 def compute_primary_kpis(orders, despatch, returns) -> dict:
-    total_ordered    = _safe_sum(orders, "Cases_Ordered")
+    total_ordered    = _safe_sum(orders,  "Cases_Ordered")
     total_dispatched = _safe_sum(despatch, "Cases_Despatched")
-    total_returns    = _safe_sum(returns, "Returned_Cases")
+    total_returns    = _safe_sum(returns,  "Returned_Cases")
     count_orders     = _safe_nunique(orders, "Order_No")
     unique_customers = _safe_nunique(orders, "Customer")
 
-    denom = total_dispatched if total_dispatched > 0 else 1
-    return_rate = (total_returns / denom) * 100
+    return_rate = (total_returns / max(total_dispatched, 1)) * 100
+    fill_rate   = (total_dispatched / max(total_ordered, 1)) * 100
 
     return {
         "total_ordered":    total_ordered,
         "total_returns":    total_returns,
         "return_rate":      return_rate,
+        "fill_rate":        fill_rate,
         "count_orders":     count_orders,
         "unique_customers": unique_customers,
         "cases_dispatched": total_dispatched,
@@ -40,20 +41,23 @@ def compute_receiving_kpi(receiving) -> float:
 
 
 def compute_inventory_kpis(inventory, despatch, fixed_manpower: int, orders) -> dict:
-    total_value = _safe_sum(inventory, "Inventory_Value_INR")
-    cases_on_hand = _safe_sum(inventory, "Cases_On_Hand")
-    cases_dispatched = _safe_sum(despatch, "Cases_Despatched")
+    total_value      = _safe_sum(inventory, "Inventory_Value_INR")
+    cases_on_hand    = _safe_sum(inventory, "Cases_On_Hand")
+    cases_dispatched = _safe_sum(despatch,  "Cases_Despatched")
 
-    monthly_out = cases_dispatched / 30 if cases_dispatched > 0 else 1
-    stock_cover = cases_on_hand / monthly_out
+    # Stock Cover: cap at 9 999 days to avoid absurd values for zero-dispatch plants
+    monthly_out  = cases_dispatched / 30 if cases_dispatched > 0 else 0
+    stock_cover  = min(cases_on_hand / monthly_out, 9999.9) if monthly_out > 0 else 0.0
+    no_dispatch  = monthly_out == 0  # caller uses this to show "N/A" instead of 0.0
 
-    cases_per_manhour = cases_dispatched / max(fixed_manpower, 1)
-    count_orders = _safe_nunique(orders, "Order_No") if orders is not None else 1
+    cases_per_manhour  = cases_dispatched / max(fixed_manpower, 1)
+    count_orders       = _safe_nunique(orders, "Order_No") if orders is not None else 1
     manpower_per_order = fixed_manpower / max(count_orders, 1)
 
     return {
         "total_value":        total_value,
         "stock_cover":        stock_cover,
+        "stock_cover_na":     no_dispatch,
         "cases_per_manhour":  cases_per_manhour,
         "manpower_per_order": manpower_per_order,
     }
@@ -72,8 +76,8 @@ def compute_expiry_kpis(inventory) -> dict:
     for risk, key in [
         ("Expired",    "expired_value"),
         ("0-30 Days",  "near_30_cases"),
-        ("30-45 Days", "near_45_cases"),
-        ("45-60 Days", "near_60_cases"),
+        ("31-45 Days", "near_45_cases"),
+        ("46-60 Days", "near_60_cases"),
     ]:
         sub = inventory[inventory["Expiry_Risk"] == risk]
         if risk == "Expired":
@@ -119,7 +123,7 @@ def compute_channel_split(orders) -> pd.DataFrame:
 
 
 def compute_inventory_health_table(inventory) -> pd.DataFrame:
-    risks = ["Expired", "0-30 Days", "30-45 Days", "45-60 Days"]
+    risks = ["Expired", "0-30 Days", "31-45 Days", "46-60 Days"]
     if inventory is None or inventory.empty or "Expiry_Risk" not in inventory.columns:
         return pd.DataFrame({
             "Expiry_Risk": risks,
@@ -135,8 +139,73 @@ def compute_inventory_health_table(inventory) -> pd.DataFrame:
     rows = []
     for risk in risks:
         sub = inventory[inventory["Expiry_Risk"] == risk]
-        cases = int(sub["Cases_On_Hand"].sum()) if "Cases_On_Hand" in sub.columns else 0
-        val   = sub["Inventory_Value_INR"].sum() if "Inventory_Value_INR" in sub.columns else 0
+        cases = int(_safe_sum(sub, "Cases_On_Hand"))
+        val   = _safe_sum(sub, "Inventory_Value_INR")
         pct   = round(val / max(total_val, 1) * 100, 1)
         rows.append({"Expiry_Risk": risk, "Cases": cases, "Value_INR": val, "Pct_Total": pct})
     return pd.DataFrame(rows)
+
+
+def compute_rlm_table(
+    orders, despatch, returns, receiving, inventory,
+    zone_sel: str,
+    fixed_manpower: int = 50,
+) -> pd.DataFrame:
+    """Per-plant KPI breakdown for the RLM Zone Comparison view (vectorized)."""
+
+    def _zone_filter(df):
+        if df is None or df.empty or "Plant" not in df.columns:
+            return None
+        if zone_sel != "All Zones" and "Zone" in df.columns:
+            return df[df["Zone"] == zone_sel]
+        return df
+
+    o   = _zone_filter(orders)
+    d   = _zone_filter(despatch)
+    r   = _zone_filter(returns)
+    rc  = _zone_filter(receiving)
+    inv = _zone_filter(inventory)
+
+    def _group(df, col) -> pd.Series:
+        if df is None or df.empty or col not in df.columns:
+            return pd.Series(dtype=float)
+        return pd.to_numeric(df[col], errors="coerce").fillna(0).groupby(df["Plant"]).sum()
+
+    cases_ordered    = _group(o,   "Cases_Ordered")
+    cases_dispatched = _group(d,   "Cases_Despatched")
+    cases_received   = _group(rc,  "Total_Cases_Received")
+    returned_cases   = _group(r,   "Returned_Cases")
+    inv_value        = _group(inv, "Inventory_Value_INR")
+    cases_on_hand    = _group(inv, "Cases_On_Hand")
+
+    all_plants = sorted(
+        set(cases_ordered.index) | set(cases_dispatched.index)
+        | set(cases_received.index) | set(returned_cases.index)
+        | set(inv_value.index)
+    )
+    if not all_plants:
+        return pd.DataFrame()
+
+    idx = all_plants
+    acc = pd.DataFrame(index=idx)
+    acc["Cases_Ordered"]    = cases_ordered.reindex(idx, fill_value=0).astype(int)
+    acc["Cases_Dispatched"] = cases_dispatched.reindex(idx, fill_value=0).astype(int)
+    acc["Cases_Received"]   = cases_received.reindex(idx, fill_value=0).astype(int)
+    acc["Returned_Cases"]   = returned_cases.reindex(idx, fill_value=0).astype(int)
+    acc["Inv_Value_INR"]    = inv_value.reindex(idx, fill_value=0).round(0)
+    _on_hand                = cases_on_hand.reindex(idx, fill_value=0)
+
+    acc["Fill_Rate_%"]   = (acc["Cases_Dispatched"] / acc["Cases_Ordered"].clip(lower=1) * 100).round(1)
+    acc["Return_Rate_%"] = (acc["Returned_Cases"] / acc["Cases_Dispatched"].clip(lower=1) * 100).round(1)
+
+    monthly_out = (acc["Cases_Dispatched"] / 30).replace(0, np.nan)
+    acc["Stock_Cover_Days"] = (_on_hand / monthly_out).clip(upper=9999).round(1).fillna(0)
+
+    acc["Cases_Per_MH"] = (acc["Cases_Dispatched"] / max(fixed_manpower, 1)).round(1)
+
+    acc["Dispatch_Rank"] = (
+        acc["Cases_Dispatched"].rank(method="min", ascending=False).astype(int)
+    )
+
+    acc.index.name = "Plant"
+    return acc.reset_index()

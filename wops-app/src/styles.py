@@ -117,3 +117,12 @@ def accuracy_color(acc: float) -> str:
     if acc >= 90:
         return "#E67E22"
     return "#C0392B"
+
+
+def fill_rate_color(rate: float) -> str:
+    """Green ≥95%, orange 85-95%, red <85%."""
+    if rate >= 95:
+        return "#27AE60"
+    if rate >= 85:
+        return "#E67E22"
+    return "#C0392B"

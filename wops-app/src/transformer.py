@@ -350,7 +350,7 @@ def _build_inventory(nysd_df: pd.DataFrame) -> pd.DataFrame:
             days <= 45,
             days <= 60,
         ],
-        ["Unknown", "Expired", "0-30 Days", "30-45 Days", "45-60 Days"],
+        ["Unknown", "Expired", "0-30 Days", "31-45 Days", "46-60 Days"],
         default="OK",
     )
     return out.reset_index(drop=True)
