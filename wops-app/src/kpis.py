@@ -128,7 +128,10 @@ def compute_inventory_health_table(inventory) -> pd.DataFrame:
             "Pct_Total": [0.0]*4,
         })
 
-    total_val = inventory["Inventory_Value_INR"].sum()
+    total_val = (
+        pd.to_numeric(inventory["Inventory_Value_INR"], errors="coerce").fillna(0).sum()
+        if "Inventory_Value_INR" in inventory.columns else 0.0
+    )
     rows = []
     for risk in risks:
         sub = inventory[inventory["Expiry_Risk"] == risk]

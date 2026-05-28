@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Optional, Dict
 import streamlit as st
 from src.filters import add_zone, build_zone_map_from_master
@@ -9,6 +9,12 @@ PHYSICAL_DAMAGE = {"AIR LEAK/DAMAGE PIEC", "CARTON DAMAGE", "DAMAGED IN TRANSIT"
 QUALITY_ISSUE   = {"QAS RELATED ISSUE", "AGING STOCK"}
 COMMERCIAL      = {"PRICING ISSUE", "PACK SIZE/ GRAMMAGE", "ALL ISSUESRELATED PO", "THROUGH CUSTOMER"}
 OTHER_REASONS   = {"INTER CHANGE", "OTHER REASON"}
+
+# Pre-compute upper-case sets for vectorized damage classification
+_PHYSICAL_UPPER  = {x.upper() for x in PHYSICAL_DAMAGE}
+_QUALITY_UPPER   = {x.upper() for x in QUALITY_ISSUE}
+_COMMERCIAL_UPPER = {x.upper() for x in COMMERCIAL}
+_OTHER_UPPER     = {x.upper() for x in OTHER_REASONS}
 
 # ── Column name candidate lists (first match wins, case-insensitive) ──────────
 _INV_COLS    = ["Invoice no", "Invoice No", "Invoice Number", "Invoice_No",
@@ -33,6 +39,8 @@ _PRICE_COLS  = ["Basic", "MRP", "Gross Revenue New", "Invoice Value",
 _ITEM_COLS   = ["Item no", "Item No", "Item no.", "Line Item", "Order Line"]
 _REF_COLS    = ["Reference Invoice Number", "Ref Invoice", "Reference Doc",
                 "Ref. Invoice No", "Reference Document Number"]
+
+_EXCEL_EPOCH = pd.Timestamp(datetime(1899, 12, 30))
 
 
 def _safe_col(df: pd.DataFrame, *candidates) -> Optional[str]:
@@ -59,31 +67,37 @@ def _to_numeric(series: pd.Series) -> pd.Series:
 
 
 def _to_date(series: pd.Series) -> pd.Series:
-    """Parse dates — handles datetime objects, ISO strings, and Excel serials."""
-    def _parse_one(v):
-        if pd.isna(v):
-            return pd.NaT
-        if isinstance(v, (pd.Timestamp,)):
-            return v
-        try:
-            return pd.to_datetime(v)
-        except Exception:
-            pass
-        # Try Excel serial number
-        try:
-            from datetime import datetime, timedelta
-            serial = float(str(v).replace(',', '').strip())
-            if 1 < serial < 200000:  # sanity check: valid Excel date range
-                return pd.Timestamp(datetime(1899, 12, 30) + timedelta(days=serial))
-        except Exception:
-            pass
-        return pd.NaT
+    """Parse dates — bulk pd.to_datetime first; Excel serial fallback for remaining NaT."""
+    result = pd.to_datetime(series, errors="coerce")
 
-    return series.apply(_parse_one)
+    nat_mask = result.isna() & series.notna()
+    if nat_mask.any():
+        raw = series[nat_mask]
+        serials = pd.to_numeric(
+            raw.astype(str).str.replace(",", "", regex=False).str.strip(),
+            errors="coerce",
+        )
+        valid = (serials > 1) & (serials < 200000)
+        parsed = _EXCEL_EPOCH + pd.to_timedelta(serials.where(valid), unit="D")
+        result = result.copy()
+        result[nat_mask] = parsed
+
+    return result
+
+
+def _norm_plant_series(series: pd.Series) -> pd.Series:
+    """Vectorized plant normalisation: '5135.0' → '5135', blank/NaN → 'Unknown'."""
+    s = series.fillna("").astype(str).str.strip()
+    numeric = pd.to_numeric(s, errors="coerce")
+    is_int_float = numeric.notna() & (numeric % 1 == 0)
+    result = s.copy()
+    result[is_int_float] = numeric[is_int_float].astype(int).astype(str)
+    result[result.isin(["", "nan", "None"])] = "Unknown"
+    return result
 
 
 def _norm_plant(val) -> str:
-    """Normalise plant code to clean string (5135.0 → '5135')."""
+    """Normalise a single plant code to clean string (5135.0 → '5135')."""
     if pd.isna(val) or str(val).strip() in ("", "nan", "None"):
         return "Unknown"
     s = str(val).strip()
@@ -93,21 +107,6 @@ def _norm_plant(val) -> str:
     except (ValueError, OverflowError):
         pass
     return s
-
-
-def _classify_damage(reason) -> str:
-    if not isinstance(reason, str) or not reason.strip():
-        return "Unclassified"
-    r = reason.upper().strip()
-    if r in {x.upper() for x in PHYSICAL_DAMAGE}:
-        return "Physical Damage"
-    if r in {x.upper() for x in QUALITY_ISSUE}:
-        return "Quality Issue"
-    if r in {x.upper() for x in COMMERCIAL}:
-        return "Commercial Issue"
-    if r in {x.upper() for x in OTHER_REASONS}:
-        return "Other"
-    return "Unclassified"
 
 
 @st.cache_data(show_spinner=False)
@@ -127,12 +126,10 @@ def build_all_dataframes(
         "receiving", "inventory", "inventory_accuracy", "transport"
     ]}
 
-    # Build zone map from Master_WH if provided
     zone_map = {}
-    name_map = {}
     if master_wh_bytes:
         mwh_df, _ = load_master_wh(master_wh_bytes)
-        zone_map, name_map = build_zone_map_from_master(mwh_df)
+        zone_map, _ = build_zone_map_from_master(mwh_df)
 
     raw_zsd, err = load_zsd(zsd_bytes)
     if raw_zsd is None:
@@ -169,7 +166,6 @@ def build_all_dataframes(
     if raw_transport is not None:
         result["transport"] = _build_transport(raw_transport)
 
-    # Apply zone mapping to every dataframe at the end
     for key, df in result.items():
         if df is not None and not df.empty and "Plant" in df.columns:
             result[key] = add_zone(df, zone_map or None)
@@ -208,7 +204,7 @@ def _build_customer_orders(df: pd.DataFrame) -> pd.DataFrame:
     out["SKU_Description"] = df[desc_col].values  if desc_col  else np.nan
     out["Cases_Ordered"]   = _to_numeric(df[qty_col]) if qty_col else 0.0
     out["Unit_Price_INR"]  = _to_numeric(df[price_col]) if price_col else 0.0
-    out["Plant"]           = df[plant_col].apply(_norm_plant).values if plant_col else "Unknown"
+    out["Plant"]           = _norm_plant_series(df[plant_col]) if plant_col else "Unknown"
     out["On_Time_Delivery"]   = "Pending"
     out["In_Full_Delivery"]   = "Pending"
     return out.reset_index(drop=True)
@@ -235,12 +231,11 @@ def _build_order_despatch(df: pd.DataFrame) -> pd.DataFrame:
     out["Despatch_Date"]     = _to_date(df[date_col]) if date_col  else pd.NaT
     out["Cases_Despatched"]  = _to_numeric(df[qty_col]) if qty_col else 0.0
     out["Carrier"]           = df[truck_col].values  if truck_col  else np.nan
-    out["Plant"]             = df[plant_col].apply(_norm_plant).values if plant_col else "Unknown"
+    out["Plant"]             = _norm_plant_series(df[plant_col]) if plant_col else "Unknown"
 
-    out["Lot_No_Status"] = out["Lot_No"].apply(
-        lambda x: "MISSING BATCH"
-        if (pd.isna(x) or str(x).strip() in ("", "nan", "None"))
-        else "OK"
+    lot_str = out["Lot_No"].fillna("").astype(str).str.strip()
+    out["Lot_No_Status"] = np.where(
+        lot_str.isin(["", "nan", "None"]), "MISSING BATCH", "OK"
     )
     return out.reset_index(drop=True)
 
@@ -268,8 +263,20 @@ def _build_returns(df: pd.DataFrame) -> pd.DataFrame:
     out["Return_Date"]        = _to_date(df[date_col]) if date_col else pd.NaT
     out["Returned_Cases"]     = _to_numeric(df[qty_col]).abs() if qty_col else 0.0
     out["Return_Reason_Code"] = df[reason_col].values if reason_col else np.nan
-    out["Plant"]              = df[plant_col].apply(_norm_plant).values if plant_col else "Unknown"
-    out["Damage_Category"]    = out["Return_Reason_Code"].apply(_classify_damage)
+    out["Plant"]              = _norm_plant_series(df[plant_col]) if plant_col else "Unknown"
+
+    reason_upper = out["Return_Reason_Code"].fillna("").astype(str).str.strip().str.upper()
+    out["Damage_Category"] = np.select(
+        [
+            reason_upper.isin(_PHYSICAL_UPPER),
+            reason_upper.isin(_QUALITY_UPPER),
+            reason_upper.isin(_COMMERCIAL_UPPER),
+            reason_upper.isin(_OTHER_UPPER),
+            reason_upper == "",
+        ],
+        ["Physical Damage", "Quality Issue", "Commercial Issue", "Other", "Unclassified"],
+        default="Unclassified",
+    )
     return out.reset_index(drop=True)
 
 
@@ -295,36 +302,14 @@ def _build_receiving(df: pd.DataFrame) -> pd.DataFrame:
     out["Lot_No"]                = df[batch_col].astype(str).values if batch_col else np.nan
     out["Expiry_Date"]           = _to_date(df[exp_col]) if exp_col  else pd.NaT
     out["Total_Cases_Received"]  = _to_numeric(df[qty_col]) if qty_col else 0.0
-    out["Plant"]                 = df[plant_col].apply(_norm_plant).values if plant_col else "Unknown"
+    out["Plant"]                 = _norm_plant_series(df[plant_col]) if plant_col else "Unknown"
 
-    reason_series = df[reason_col] if reason_col else pd.Series([""] * len(df))
-    out["Good_Cases"] = out.apply(
-        lambda r: r["Total_Cases_Received"]
-        if str(reason_series.iloc[r.name] if hasattr(reason_series, 'iloc') else "").strip() in ("", "nan", "None")
-        else 0,
-        axis=1,
-    )
+    reason_series = df[reason_col] if reason_col else pd.Series([""] * len(df), index=df.index)
+    reason_str = reason_series.fillna("").astype(str).str.strip()
+    is_clean = reason_str.isin(["", "nan", "None"])
+    out["Good_Cases"]    = np.where(is_clean.values, out["Total_Cases_Received"].values, 0.0)
     out["Damaged_Cases"] = out["Total_Cases_Received"] - out["Good_Cases"]
     return out.reset_index(drop=True)
-
-
-def _expiry_risk(expiry_date, today: date) -> str:
-    if pd.isna(expiry_date):
-        return "Unknown"
-    try:
-        exp = expiry_date.date() if hasattr(expiry_date, "date") else expiry_date
-        days = (exp - today).days
-    except Exception:
-        return "Unknown"
-    if days < 0:
-        return "Expired"
-    if days <= 30:
-        return "0-30 Days"
-    if days <= 45:
-        return "30-45 Days"
-    if days <= 60:
-        return "45-60 Days"
-    return "OK"
 
 
 def _build_inventory(nysd_df: pd.DataFrame) -> pd.DataFrame:
@@ -332,8 +317,6 @@ def _build_inventory(nysd_df: pd.DataFrame) -> pd.DataFrame:
     if nysd_df.empty:
         return pd.DataFrame()
 
-    # nysd_css already has clean column names per the schema.
-    # Provide fallbacks in case the user uploads a raw variant.
     sku_col   = _safe_col(nysd_df, "SKU", "Material No", "Material", "SKU_Code")
     desc_col  = _safe_col(nysd_df, "SKU_Description", "Material Description", "Material Name", "Description")
     lot_col   = _safe_col(nysd_df, "Lot_No", "Batch No", "Batch", "Lot No")
@@ -345,56 +328,70 @@ def _build_inventory(nysd_df: pd.DataFrame) -> pd.DataFrame:
     plant_col = _safe_col(nysd_df, "Plant", "Plant Code", "Warehouse Code")
 
     out = pd.DataFrame()
-    out["SKU"]                = nysd_df[sku_col].values   if sku_col   else np.nan
-    out["SKU_Description"]    = nysd_df[desc_col].values  if desc_col  else np.nan
-    out["Lot_No"]             = nysd_df[lot_col].astype(str).values if lot_col else np.nan
-    out["Expiry_Date"]        = _to_date(nysd_df[exp_col]) if exp_col  else pd.NaT
-    out["Cases_On_Hand"]      = _to_numeric(nysd_df[qty_col]).astype(int) if qty_col else 0
-    out["Unit_Cost_INR"]      = _to_numeric(nysd_df[cost_col]) if cost_col else 0.0
-    out["Inventory_Value_INR"]= _to_numeric(nysd_df[val_col]) if val_col  else 0.0
-    out["Status"]             = nysd_df[stat_col].values  if stat_col  else np.nan
-    out["Plant"]              = nysd_df[plant_col].apply(_norm_plant).values if plant_col else "Unknown"
-    out["Month_End_Date"]     = pd.Timestamp(date.today())
+    out["SKU"]                 = nysd_df[sku_col].values   if sku_col   else np.nan
+    out["SKU_Description"]     = nysd_df[desc_col].values  if desc_col  else np.nan
+    out["Lot_No"]              = nysd_df[lot_col].astype(str).values if lot_col else np.nan
+    out["Expiry_Date"]         = _to_date(nysd_df[exp_col]) if exp_col  else pd.NaT
+    out["Cases_On_Hand"]       = _to_numeric(nysd_df[qty_col]).astype(int) if qty_col else 0
+    out["Unit_Cost_INR"]       = _to_numeric(nysd_df[cost_col]) if cost_col else 0.0
+    out["Inventory_Value_INR"] = _to_numeric(nysd_df[val_col]) if val_col  else 0.0
+    out["Status"]              = nysd_df[stat_col].values  if stat_col  else np.nan
+    out["Plant"]               = _norm_plant_series(nysd_df[plant_col]) if plant_col else "Unknown"
+    out["Month_End_Date"]      = pd.Timestamp(date.today())
 
-    today = date.today()
-    out["Expiry_Risk"] = out["Expiry_Date"].apply(lambda x: _expiry_risk(x, today))
+    today_ts = pd.Timestamp(date.today())
+    exp_dates = out["Expiry_Date"]
+    days = (exp_dates - today_ts).dt.days
+    out["Expiry_Risk"] = np.select(
+        [
+            exp_dates.isna(),
+            days < 0,
+            days <= 30,
+            days <= 45,
+            days <= 60,
+        ],
+        ["Unknown", "Expired", "0-30 Days", "30-45 Days", "45-60 Days"],
+        default="OK",
+    )
     return out.reset_index(drop=True)
 
 
 def _build_inventory_accuracy(receiving, despatch, returns, inventory) -> pd.DataFrame:
-    plants: set = set()
-    for df in [receiving, despatch, returns, inventory]:
-        if df is not None and "Plant" in df.columns:
-            plants.update(df["Plant"].dropna().unique())
+    def _group_sum(df, col) -> pd.Series:
+        if df is None or df.empty or "Plant" not in df.columns or col not in df.columns:
+            return pd.Series(dtype=float)
+        return (
+            pd.to_numeric(df[col], errors="coerce")
+            .fillna(0)
+            .groupby(df["Plant"])
+            .sum()
+        )
 
-    rows = []
-    for plant in sorted(str(p) for p in plants):
-        def psum(df, col):
-            if df is None or col not in df.columns:
-                return 0.0
-            sub = df[df["Plant"] == plant]
-            return _to_numeric(sub[col]).sum()
+    mov_in  = _group_sum(receiving,  "Total_Cases_Received")
+    mov_out = _group_sum(despatch,   "Cases_Despatched")
+    ret_qty = _group_sum(returns,    "Returned_Cases")
+    actual  = _group_sum(inventory,  "Cases_On_Hand")
 
-        mov_in    = psum(receiving, "Total_Cases_Received")
-        mov_out   = psum(despatch, "Cases_Despatched")
-        ret_qty   = psum(returns, "Returned_Cases")
-        actual    = psum(inventory, "Cases_On_Hand")
-        expected  = mov_in - mov_out + ret_qty
-        deviation = actual - expected
-        accuracy  = 1.0 - abs(deviation) / max(abs(expected), 1)
+    all_plants = sorted(
+        set(mov_in.index) | set(mov_out.index) | set(ret_qty.index) | set(actual.index)
+    )
+    if not all_plants:
+        return pd.DataFrame(columns=[
+            "Plant", "Movement_In", "Movement_Out", "Returns_Qty",
+            "Expected_Stock", "Actual_Stock", "Cases_Deviation", "Accuracy_%",
+        ])
 
-        rows.append({
-            "Plant":          plant,
-            "Movement_In":    mov_in,
-            "Movement_Out":   mov_out,
-            "Returns_Qty":    ret_qty,
-            "Expected_Stock": expected,
-            "Actual_Stock":   actual,
-            "Cases_Deviation":deviation,
-            "Accuracy_%":     round(accuracy * 100, 2),
-        })
-
-    return pd.DataFrame(rows)
+    acc = pd.DataFrame(index=all_plants)
+    acc["Movement_In"]    = mov_in.reindex(all_plants, fill_value=0)
+    acc["Movement_Out"]   = mov_out.reindex(all_plants, fill_value=0)
+    acc["Returns_Qty"]    = ret_qty.reindex(all_plants, fill_value=0)
+    acc["Actual_Stock"]   = actual.reindex(all_plants, fill_value=0)
+    acc["Expected_Stock"] = acc["Movement_In"] - acc["Movement_Out"] + acc["Returns_Qty"]
+    acc["Cases_Deviation"] = acc["Actual_Stock"] - acc["Expected_Stock"]
+    denom = acc["Expected_Stock"].abs().clip(lower=1)
+    acc["Accuracy_%"] = (1.0 - acc["Cases_Deviation"].abs() / denom).mul(100).round(2)
+    acc.index.name = "Plant"
+    return acc.reset_index()
 
 
 def _build_transport(df: pd.DataFrame) -> pd.DataFrame:
@@ -433,7 +430,6 @@ def _build_transport(df: pd.DataFrame) -> pd.DataFrame:
             c = _safe_col(df, *candidates)
             out[dst] = df[c].values if c else np.nan
     else:
-        # Positional fallback for raw SAP export (47+ columns)
         idx_map = {
             5: "Source_Plant", 11: "Truck_No", 12: "Shipment_Doc", 13: "Delivery_Doc",
             18: "Shipment_Type", 19: "Bill_Type", 20: "Invoice_No", 21: "Invoice_Date",
@@ -448,5 +444,5 @@ def _build_transport(df: pd.DataFrame) -> pd.DataFrame:
     out["Billing_Qty"]     = _to_numeric(out.get("Billing_Qty",    pd.Series(dtype=object)))
     out["Billing_Qty_KG"]  = _to_numeric(out.get("Billing_Qty_KG", pd.Series(dtype=object)))
     src = out.get("Source_Plant", pd.Series(["Unknown"] * len(out)))
-    out["Plant"] = src.apply(_norm_plant)
+    out["Plant"] = _norm_plant_series(src)
     return out.reset_index(drop=True)

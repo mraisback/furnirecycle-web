@@ -73,9 +73,12 @@ def compute_error_log(orders, despatch, returns, receiving, inventory, inventory
     missing_return_lot = 0
     if returns is not None and "Lot_No" in returns.columns:
         missing_return_lot = int(
-            returns["Lot_No"].apply(
-                lambda x: pd.isna(x) or str(x).strip() in ("", "nan", "None")
-            ).sum()
+            returns["Lot_No"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .isin(["", "nan", "None"])
+            .sum()
         )
     rows.append({
         "Error Type":      "Missing Lot on Returns",
