@@ -1,5 +1,5 @@
 import pandas as pd
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, Any
 
 # ── Numeric plant-code → Zone (hardcoded from Master_WH) ─────────────────────
 ZONE_MAP: Dict[str, str] = {
@@ -178,3 +178,70 @@ def apply_filter(
     elif zone_sel != "All Zones" and "Zone" in df.columns:
         return df[df["Zone"] == zone_sel]
     return df
+
+
+def build_master_wh_numeric_maps(
+    master_df: Optional[pd.DataFrame],
+) -> Dict[str, Dict[str, float]]:
+    """Extract per-plant numeric columns from Master_WH.
+
+    Returns a dict with keys: 'rent', 'capacity', 'area', 'labour'
+    Each value is {plant_code_str: float}.
+    """
+    empty: Dict[str, Dict[str, float]] = {
+        "rent": {}, "capacity": {}, "area": {}, "labour": {}
+    }
+    if master_df is None or master_df.empty:
+        return empty
+
+    def _find(df: pd.DataFrame, *candidates: str) -> Optional[str]:
+        for c in candidates:
+            if c in df.columns:
+                return c
+        lower = {col.lower(): col for col in df.columns}
+        for c in candidates:
+            found = lower.get(c.lower())
+            if found:
+                return found
+        return None
+
+    code_col = _find(master_df,
+        "Warehouse Code *", "Warehouse Code", "Plant", "Plant Code")
+    rent_col = _find(master_df,
+        "Rent", "Monthly Rent", "Rent (₹)", "Monthly Rent (₹)",
+        "Rent_INR", "Rent (INR)")
+    cap_col  = _find(master_df,
+        "Capacity", "Capacity (Cases)", "WH Capacity",
+        "Storage Capacity", "Storage Capacity (Cases)")
+    area_col = _find(master_df,
+        "Usable Area", "Usable Area (Sqft)", "Area (Sqft)",
+        "Floor Area", "Floor Area (Sqft)", "Area")
+    lab_col  = _find(master_df,
+        "Labour", "Manpower", "Fixed Manpower", "No. of Manpower",
+        "Headcount", "Labour Count", "Labour (Nos)")
+
+    if not code_col:
+        return empty
+
+    maps: Dict[str, Dict[str, float]] = {
+        "rent": {}, "capacity": {}, "area": {}, "labour": {}
+    }
+    col_mapping = [
+        ("rent",     rent_col),
+        ("capacity", cap_col),
+        ("area",     area_col),
+        ("labour",   lab_col),
+    ]
+
+    for _, row in master_df.iterrows():
+        key = _norm_plant_key(row[code_col])
+        if not key or key in ("", "All Plants"):
+            continue
+        for map_key, col_name in col_mapping:
+            if not col_name:
+                continue
+            val = pd.to_numeric(row.get(col_name), errors="coerce")
+            if pd.notna(val) and val > 0:
+                maps[map_key][key] = float(val)
+
+    return maps

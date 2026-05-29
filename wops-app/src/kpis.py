@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import Optional
+from typing import Optional, Dict
 
 
 def _safe_sum(df: Optional[pd.DataFrame], col: str) -> float:
@@ -22,14 +22,16 @@ def compute_primary_kpis(orders, despatch, returns) -> dict:
     count_orders     = _safe_nunique(orders, "Order_No")
     unique_customers = _safe_nunique(orders, "Customer")
 
-    return_rate = (total_returns / max(total_dispatched, 1)) * 100
-    fill_rate   = (total_dispatched / max(total_ordered, 1)) * 100
+    return_rate    = (total_returns    / max(total_dispatched, 1)) * 100
+    fill_rate      = (total_dispatched / max(total_ordered,    1)) * 100
+    avg_order_size = total_dispatched  / max(count_orders,     1)
 
     return {
         "total_ordered":    total_ordered,
         "total_returns":    total_returns,
         "return_rate":      return_rate,
         "fill_rate":        fill_rate,
+        "avg_order_size":   avg_order_size,
         "count_orders":     count_orders,
         "unique_customers": unique_customers,
         "cases_dispatched": total_dispatched,
@@ -45,10 +47,9 @@ def compute_inventory_kpis(inventory, despatch, fixed_manpower: int, orders) -> 
     cases_on_hand    = _safe_sum(inventory, "Cases_On_Hand")
     cases_dispatched = _safe_sum(despatch,  "Cases_Despatched")
 
-    # Stock Cover: cap at 9 999 days to avoid absurd values for zero-dispatch plants
-    monthly_out  = cases_dispatched / 30 if cases_dispatched > 0 else 0
-    stock_cover  = min(cases_on_hand / monthly_out, 9999.9) if monthly_out > 0 else 0.0
-    no_dispatch  = monthly_out == 0  # caller uses this to show "N/A" instead of 0.0
+    monthly_out = cases_dispatched / 30 if cases_dispatched > 0 else 0
+    stock_cover = min(cases_on_hand / monthly_out, 9999.9) if monthly_out > 0 else 0.0
+    no_dispatch = monthly_out == 0
 
     cases_per_manhour  = cases_dispatched / max(fixed_manpower, 1)
     count_orders       = _safe_nunique(orders, "Order_No") if orders is not None else 1
@@ -61,6 +62,40 @@ def compute_inventory_kpis(inventory, despatch, fixed_manpower: int, orders) -> 
         "cases_per_manhour":  cases_per_manhour,
         "manpower_per_order": manpower_per_order,
     }
+
+
+def compute_rs_per_case(
+    despatch,
+    rent_map: Dict[str, float],
+    zone_sel: str,
+    plant_sel: str,
+) -> Optional[float]:
+    """Rent ÷ Cases Dispatched for the current filter context.
+
+    Returns None when rent data is unavailable or despatch is zero
+    (caller should display '—' rather than 0 or an error).
+    """
+    if not rent_map or despatch is None or despatch.empty:
+        return None
+
+    cases_dispatched = _safe_sum(despatch, "Cases_Despatched")
+    if cases_dispatched == 0:
+        return None
+
+    if plant_sel != "All Plants" and "Plant" in despatch.columns:
+        total_rent = rent_map.get(str(plant_sel), None)
+        if total_rent is None:
+            return None
+    else:
+        plants = (
+            despatch["Plant"].dropna().astype(str).unique()
+            if "Plant" in despatch.columns else []
+        )
+        total_rent = sum(rent_map.get(p, 0.0) for p in plants)
+        if total_rent == 0:
+            return None
+
+    return total_rent / cases_dispatched
 
 
 def compute_expiry_kpis(inventory) -> dict:
@@ -138,7 +173,7 @@ def compute_inventory_health_table(inventory) -> pd.DataFrame:
     )
     rows = []
     for risk in risks:
-        sub = inventory[inventory["Expiry_Risk"] == risk]
+        sub   = inventory[inventory["Expiry_Risk"] == risk]
         cases = int(_safe_sum(sub, "Cases_On_Hand"))
         val   = _safe_sum(sub, "Inventory_Value_INR")
         pct   = round(val / max(total_val, 1) * 100, 1)
@@ -146,12 +181,31 @@ def compute_inventory_health_table(inventory) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def compute_data_freshness(orders, despatch) -> dict:
+    """Return MAX order date and MAX despatch date for the current filter."""
+    result = {"max_order_date": None, "max_despatch_date": None}
+    if orders is not None and "Order_Date" in orders.columns:
+        d = orders["Order_Date"].dropna()
+        if not d.empty:
+            result["max_order_date"] = d.max()
+    if despatch is not None and "Despatch_Date" in despatch.columns:
+        d = despatch["Despatch_Date"].dropna()
+        if not d.empty:
+            result["max_despatch_date"] = d.max()
+    return result
+
+
 def compute_rlm_table(
     orders, despatch, returns, receiving, inventory,
     zone_sel: str,
     fixed_manpower: int = 50,
+    master_maps: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> pd.DataFrame:
-    """Per-plant KPI breakdown for the RLM Zone Comparison view (vectorized)."""
+    """Per-plant KPI breakdown for the RLM Zone Comparison view.
+
+    Undefined ratios (zero denominator, missing master data) are stored as
+    NaN so callers can display '-' rather than a misleading 0.
+    """
 
     def _zone_filter(df):
         if df is None or df.empty or "Plant" not in df.columns:
@@ -186,6 +240,13 @@ def compute_rlm_table(
     if not all_plants:
         return pd.DataFrame()
 
+    # Pull master data maps
+    maps         = master_maps or {}
+    rent_map     = maps.get("rent",     {})
+    cap_map      = maps.get("capacity", {})
+    area_map     = maps.get("area",     {})
+    labour_map   = maps.get("labour",   {})
+
     idx = all_plants
     acc = pd.DataFrame(index=idx)
     acc["Cases_Ordered"]    = cases_ordered.reindex(idx, fill_value=0).astype(int)
@@ -195,16 +256,46 @@ def compute_rlm_table(
     acc["Inv_Value_INR"]    = inv_value.reindex(idx, fill_value=0).round(0)
     _on_hand                = cases_on_hand.reindex(idx, fill_value=0)
 
-    acc["Fill_Rate_%"]   = (acc["Cases_Dispatched"] / acc["Cases_Ordered"].clip(lower=1) * 100).round(1)
-    acc["Return_Rate_%"] = (acc["Returned_Cases"] / acc["Cases_Dispatched"].clip(lower=1) * 100).round(1)
+    # ── Derived metrics — NaN when denominator is zero ────────────────────────
+    _ordered_pos    = acc["Cases_Ordered"].replace(0, np.nan)
+    _dispatched_pos = acc["Cases_Dispatched"].replace(0, np.nan)
 
-    monthly_out = (acc["Cases_Dispatched"] / 30).replace(0, np.nan)
-    acc["Stock_Cover_Days"] = (_on_hand / monthly_out).clip(upper=9999).round(1).fillna(0)
+    acc["Fill_Rate_%"]   = (acc["Cases_Dispatched"] / _ordered_pos * 100).round(1)
+    acc["Return_Rate_%"] = (acc["Returned_Cases"]   / _dispatched_pos * 100).round(1)
+    monthly_out = (_dispatched_pos / 30)
+    acc["Stock_Cover_Days"] = (_on_hand / monthly_out).clip(upper=9999).round(1)
 
-    acc["Cases_Per_MH"] = (acc["Cases_Dispatched"] / max(fixed_manpower, 1)).round(1)
+    # ── Average Order Size ────────────────────────────────────────────────────
+    if o is not None and not o.empty and "Order_No" in o.columns and "Plant" in o.columns:
+        order_count = o.groupby("Plant")["Order_No"].nunique()
+    else:
+        order_count = pd.Series(dtype=float)
+    order_count_r = order_count.reindex(idx, fill_value=0).replace(0, np.nan)
+    acc["Avg_Order_Size"] = (acc["Cases_Dispatched"] / order_count_r).round(1)
 
+    # ── Cases per Manhour (use Master_WH labour if available) ─────────────────
+    manpower_series = pd.Series(
+        {p: labour_map.get(str(p), fixed_manpower) for p in idx}
+    )
+    acc["Cases_Per_MH"] = (acc["Cases_Dispatched"] / manpower_series.clip(lower=1)).round(1)
+
+    # ── Master_WH derived KPIs — NaN when data absent ─────────────────────────
+    def _series_from_map(m: dict) -> pd.Series:
+        return pd.Series({p: m.get(str(p), np.nan) for p in idx})
+
+    rent_s  = _series_from_map(rent_map)
+    cap_s   = _series_from_map(cap_map)
+    area_s  = _series_from_map(area_map)
+
+    acc["Rs_Per_Case"]    = (rent_s / _dispatched_pos).round(2)
+    acc["Dock_Util_%"]    = (acc["Cases_Dispatched"] / cap_s.replace(0, np.nan) * 100).round(1)
+    acc["Rent_Per_Sqft"]  = (rent_s / area_s.replace(0, np.nan)).round(2)
+
+    # ── Dispatch rank (only among plants with non-zero dispatches) ─────────────
     acc["Dispatch_Rank"] = (
-        acc["Cases_Dispatched"].rank(method="min", ascending=False).astype(int)
+        acc["Cases_Dispatched"].replace(0, np.nan)
+        .rank(method="min", ascending=False, na_option="bottom")
+        .astype("Int64")
     )
 
     acc.index.name = "Plant"

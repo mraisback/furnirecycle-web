@@ -9,11 +9,12 @@ from src.styles import (
 )
 from src.data_loader import load_zsd, get_transaction_types
 from src.transformer import build_all_dataframes
-from src.filters import apply_filter
+from src.filters import apply_filter, build_master_wh_numeric_maps
 from src.kpis import (
     compute_primary_kpis, compute_receiving_kpi, compute_inventory_kpis,
-    compute_expiry_kpis, compute_returns_by_category, compute_channel_split,
-    compute_inventory_health_table, compute_rlm_table,
+    compute_rs_per_case, compute_expiry_kpis, compute_returns_by_category,
+    compute_channel_split, compute_inventory_health_table,
+    compute_data_freshness, compute_rlm_table,
 )
 from src.charts import returns_bar_chart, channel_pie_chart, transport_state_bar, transport_material_bar
 from src.error_detection import compute_error_log, get_missing_batch_detail, get_duplicate_invoices
@@ -29,7 +30,7 @@ with st.sidebar:
     zsd_file       = st.file_uploader("FILE 1 — zsd_salefl.xlsx",           type=["xlsx"], key="zsd")
     nysd_file      = st.file_uploader("FILE 2 — nysd_css.xlsx",              type=["xlsx"], key="nysd")
     transport_file = st.file_uploader("FILE 3 — Transport.xlsx (optional)",  type=["xlsx"], key="tp")
-    master_file    = st.file_uploader("FILE 4 — Master_WH.xlsx (optional)\nEnables Zone mapping", type=["xlsx"], key="mwh")
+    master_file    = st.file_uploader("FILE 4 — Master_WH.xlsx (optional)\nEnables Zone mapping + Rent/Labour KPIs", type=["xlsx"], key="mwh")
 
     st.markdown("---")
 
@@ -50,8 +51,7 @@ with st.sidebar:
 
     all_types = get_transaction_types(raw_zsd)
 
-    # Seed session-state defaults only when the file changes.
-    # NEVER pass default= alongside key= in st.multiselect — it resets on every rerun.
+    # Seed session-state defaults only when file changes — never pass default= with key=
     _file_hash = hash(zsd_bytes)
     if st.session_state.get("_zsd_hash") != _file_hash:
         st.session_state["_zsd_hash"]  = _file_hash
@@ -77,7 +77,11 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("**Parameters**")
-    fixed_manpower = st.number_input("Fixed Manpower", min_value=1, value=50, step=1)
+    fixed_manpower = st.number_input(
+        "Fixed Manpower (fallback)",
+        min_value=1, value=50, step=1,
+        help="Used when Master_WH does not contain a Labour/Manpower column",
+    )
 
 
 # ── LOAD & TRANSFORM ─────────────────────────────────────────────────────────
@@ -100,15 +104,18 @@ inventory    = dfs["inventory"]
 inv_accuracy = dfs["inventory_accuracy"]
 transport    = dfs["transport"]
 
-# Plant dropdown — merge built-in PLANT_NAME_MAP with any FILE 4 overrides
+# Build plant display map and master numeric maps
 from src.filters import build_zone_map_from_master, PLANT_NAME_MAP, _norm_plant_key
 from src.data_loader import load_master_wh
 
 plant_name_map: dict = dict(PLANT_NAME_MAP)
+master_maps: dict = {}
+
 if mwh_bytes:
     mwh_df, _ = load_master_wh(mwh_bytes)
     _, override = build_zone_map_from_master(mwh_df)
     plant_name_map.update(override)
+    master_maps = build_master_wh_numeric_maps(mwh_df)
 
 
 def plant_display(code: str) -> str:
@@ -128,11 +135,11 @@ plant_display_options = ["All Plants"] + [plant_display(p) for p in all_plant_co
 plant_code_options    = ["All Plants"] + all_plant_codes
 
 plant_sel_disp = st.sidebar.selectbox("Plant", plant_display_options, key="plant_sel_real")
-if plant_sel_disp == "All Plants":
-    plant_sel = "All Plants"
-else:
-    idx        = plant_display_options.index(plant_sel_disp)
-    plant_sel  = plant_code_options[idx]
+plant_sel = (
+    "All Plants"
+    if plant_sel_disp == "All Plants"
+    else plant_code_options[plant_display_options.index(plant_sel_disp)]
+)
 
 
 # ── FILTERING ─────────────────────────────────────────────────────────────────
@@ -160,7 +167,17 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     st.markdown(selector_bar(plant_sel_disp, zone_sel), unsafe_allow_html=True)
 
-    # ── PRIMARY KPIs — row 1: operations ─────────────────
+    # Data freshness indicator
+    freshness = compute_data_freshness(f_orders, f_despatch)
+    parts = []
+    if freshness["max_order_date"]:
+        parts.append(f"Latest order: **{freshness['max_order_date'].strftime('%d %b %Y')}**")
+    if freshness["max_despatch_date"]:
+        parts.append(f"Latest despatch: **{freshness['max_despatch_date'].strftime('%d %b %Y')}**")
+    if parts:
+        st.caption("📅 " + "  |  ".join(parts))
+
+    # ── PRIMARY KPIs — row 1: volume ─────────────────────
     primary        = compute_primary_kpis(f_orders, f_despatch, f_returns)
     cases_received = compute_receiving_kpi(f_receiving)
     rr             = primary["return_rate"]
@@ -168,23 +185,24 @@ with tab1:
 
     r1 = st.columns(4)
     for col, (title, val, sub, border, vc) in zip(r1, [
-        ("CASES ORDERED",    fmt_indian(primary["total_ordered"]),    "from customer orders",     "#1565C0", "#FFFFFF"),
-        ("CASES DISPATCHED", fmt_indian(primary["cases_dispatched"]), "shipped to customers",     "#27AE60", "#FFFFFF"),
-        ("FILL RATE %",      f"{fr:.1f}%",                           "dispatched ÷ ordered",     "#27AE60", fill_rate_color(fr)),
-        ("CASES RECEIVED",   fmt_indian(cases_received),             "inbound to warehouse",     "#2980B9", "#FFFFFF"),
+        ("CASES ORDERED",    fmt_indian(primary["total_ordered"]),    "from customer orders",   "#1565C0", "#FFFFFF"),
+        ("CASES DISPATCHED", fmt_indian(primary["cases_dispatched"]), "shipped to customers",   "#27AE60", "#FFFFFF"),
+        ("FILL RATE %",      f"{fr:.1f}%",                           "dispatched ÷ ordered",   "#27AE60", fill_rate_color(fr)),
+        ("CASES RECEIVED",   fmt_indian(cases_received),             "inbound to warehouse",   "#2980B9", "#FFFFFF"),
     ]):
         with col:
             st.markdown(kpi_card(title, val, sub, border, vc), unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── PRIMARY KPIs — row 2: quality ────────────────────
+    # ── PRIMARY KPIs — row 2: quality / service ───────────
+    avg_sz = primary["avg_order_size"]
     r2 = st.columns(4)
     for col, (title, val, sub, border, vc) in zip(r2, [
-        ("RETURN RATE %",    f"{rr:.1f}%",                           "returns ÷ dispatched",     "#C0392B", rate_color(rr)),
-        ("TOTAL RETURNS",    fmt_indian(primary["total_returns"]),   "returned from customers",  "#C0392B", "#FFFFFF"),
-        ("COUNT OF ORDERS",  fmt_indian(primary["count_orders"]),    "unique invoices",          "#1565C0", "#FFFFFF"),
-        ("UNIQUE CUSTOMERS", fmt_indian(primary["unique_customers"]),"distinct buyers",          "#1565C0", "#FFFFFF"),
+        ("RETURN RATE %",      f"{rr:.1f}%",                           "returns ÷ dispatched",   "#C0392B", rate_color(rr)),
+        ("TOTAL RETURNS",      fmt_indian(primary["total_returns"]),   "returned from customers","#C0392B", "#FFFFFF"),
+        ("COUNT OF ORDERS",    fmt_indian(primary["count_orders"]),    "unique invoices",         "#1565C0", "#FFFFFF"),
+        ("AVG ORDER SIZE",     f"{avg_sz:.1f}",                        "cases per order",         "#1565C0", "#FFFFFF"),
     ]):
         with col:
             st.markdown(kpi_card(title, val, sub, border, vc), unsafe_allow_html=True)
@@ -193,16 +211,20 @@ with tab1:
 
     # ── INVENTORY KPIs ───────────────────────────────────
     inv_kpis = compute_inventory_kpis(f_inventory, f_despatch, fixed_manpower, f_orders)
-    sc_val   = inv_kpis["stock_cover"]
-    sc_disp  = "No dispatch" if inv_kpis["stock_cover_na"] else f"{sc_val:.1f}"
+    sc_disp  = "No dispatch" if inv_kpis["stock_cover_na"] else f"{inv_kpis['stock_cover']:.1f}"
     sc_sub   = "no despatch data" if inv_kpis["stock_cover_na"] else "days of forward cover"
 
-    inv_cols = st.columns(4)
+    rs_case   = compute_rs_per_case(f_despatch, master_maps.get("rent", {}), zone_sel, plant_sel)
+    rs_disp   = fmt_currency(rs_case) if rs_case is not None else "—"
+    rs_sub    = "rent ÷ cases dispatched" if rs_case is not None else "upload Master_WH with Rent column"
+
+    inv_cols = st.columns(5)
     for col, (title, val, sub, border, vc) in zip(inv_cols, [
-        ("TOTAL INVENTORY VALUE",  fmt_currency(inv_kpis["total_value"]),    "month-end stock",              "#E67E22", "#FFFFFF"),
-        ("STOCK COVER (DAYS)",     sc_disp,                                  sc_sub,                         "#E67E22", "#FFFFFF"),
-        ("CASES LOADED / MANHOUR", f"{inv_kpis['cases_per_manhour']:.1f}",  f"based on {fixed_manpower} mp","#E67E22", "#FFFFFF"),
-        ("MANPOWER PER ORDER",     f"{inv_kpis['manpower_per_order']:.2f}", "fixed manpower ÷ orders",      "#E67E22", "#FFFFFF"),
+        ("TOTAL INVENTORY VALUE",  fmt_currency(inv_kpis["total_value"]),   "month-end stock",               "#E67E22", "#FFFFFF"),
+        ("STOCK COVER (DAYS)",     sc_disp,                                 sc_sub,                          "#E67E22", "#FFFFFF"),
+        ("CASES LOADED / MANHOUR", f"{inv_kpis['cases_per_manhour']:.1f}", f"based on {fixed_manpower} mp", "#E67E22", "#FFFFFF"),
+        ("MANPOWER PER ORDER",     f"{inv_kpis['manpower_per_order']:.2f}","fixed manpower ÷ orders",        "#E67E22", "#FFFFFF"),
+        ("Rs/CASE",                rs_disp,                                 rs_sub,                          "#8E44AD", "#FFFFFF"),
     ]):
         with col:
             st.markdown(kpi_card(title, val, sub, border, vc), unsafe_allow_html=True)
@@ -271,7 +293,7 @@ with tab1:
 # ════════════════════════════════════════════════════════
 with tab2:
     st.subheader("🏭 RLM Zone Comparison")
-    st.caption("Side-by-side warehouse KPIs within a zone — mirrors the Excel RLM Dashboard.")
+    st.caption("Side-by-side warehouse KPIs within a zone — mirrors the Excel RLM Dashboard. '—' = no data / zero denominator.")
 
     rlm_zone = st.selectbox(
         "Select Zone", ["North", "South", "East", "West", "All Zones"],
@@ -280,13 +302,14 @@ with tab2:
 
     rlm_df = compute_rlm_table(
         orders, despatch, returns, receiving, inventory,
-        zone_sel=rlm_zone, fixed_manpower=fixed_manpower,
+        zone_sel=rlm_zone,
+        fixed_manpower=fixed_manpower,
+        master_maps=master_maps,
     )
 
     if rlm_df.empty:
         st.info("No data available for the selected zone.")
     else:
-        # Attach warehouse display names
         rlm_df.insert(1, "Warehouse", rlm_df["Plant"].apply(plant_display))
 
         # ── Summary callouts ─────────────────────────────
@@ -296,82 +319,111 @@ with tab2:
 
         c1, c2, c3 = st.columns(3)
         with c1:
-            best_plant = rlm_df.loc[best_idx, "Warehouse"]
-            best_cases = fmt_indian(rlm_df.loc[best_idx, "Cases_Dispatched"])
             st.markdown(kpi_card(
-                "TOP DISPATCHER", best_cases, best_plant, "#27AE60", "#27AE60"
+                "TOP DISPATCHER",
+                fmt_indian(rlm_df.loc[best_idx, "Cases_Dispatched"]),
+                rlm_df.loc[best_idx, "Warehouse"],
+                "#27AE60", "#27AE60"
             ), unsafe_allow_html=True)
         with c2:
-            low_fr_plant = rlm_df.loc[worst_fr, "Warehouse"]
-            low_fr_val   = rlm_df.loc[worst_fr, "Fill_Rate_%"]
+            low_fr = rlm_df.loc[worst_fr, "Fill_Rate_%"]
             st.markdown(kpi_card(
-                "LOWEST FILL RATE", f"{low_fr_val:.1f}%", low_fr_plant,
-                "#E67E22", fill_rate_color(low_fr_val)
+                "LOWEST FILL RATE",
+                f"{low_fr:.1f}%" if pd.notna(low_fr) else "—",
+                rlm_df.loc[worst_fr, "Warehouse"],
+                "#E67E22", fill_rate_color(low_fr) if pd.notna(low_fr) else "#FFFFFF"
             ), unsafe_allow_html=True)
         with c3:
-            high_rr_plant = rlm_df.loc[worst_rr, "Warehouse"]
-            high_rr_val   = rlm_df.loc[worst_rr, "Return_Rate_%"]
+            high_rr = rlm_df.loc[worst_rr, "Return_Rate_%"]
             st.markdown(kpi_card(
-                "HIGHEST RETURN RATE", f"{high_rr_val:.1f}%", high_rr_plant,
-                "#C0392B", rate_color(high_rr_val)
+                "HIGHEST RETURN RATE",
+                f"{high_rr:.1f}%" if pd.notna(high_rr) else "—",
+                rlm_df.loc[worst_rr, "Warehouse"],
+                "#C0392B", rate_color(high_rr) if pd.notna(high_rr) else "#FFFFFF"
             ), unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-
-        # ── Per-plant KPI table with colour coding ────────
         st.markdown("#### Warehouse KPI Summary")
+
+        # Build a display version: format NaN as "—" for string cols, keep currency
+        def _fmt_rlm_cell(col_name, val):
+            if pd.isna(val):
+                return "—"
+            if col_name == "Inv_Value_INR":
+                return fmt_currency(val)
+            if col_name in ("Rs_Per_Case", "Rent_Per_Sqft"):
+                return f"₹{val:,.2f}"
+            if col_name in ("Fill_Rate_%", "Return_Rate_%", "Dock_Util_%"):
+                return f"{val:.1f}%"
+            if col_name == "Stock_Cover_Days":
+                return f"{val:.1f}"
+            if isinstance(val, float):
+                return f"{val:.1f}"
+            return str(val)
+
+        display_cols = [
+            "Plant", "Warehouse", "Cases_Ordered", "Cases_Dispatched",
+            "Fill_Rate_%", "Cases_Received", "Returned_Cases", "Return_Rate_%",
+            "Inv_Value_INR", "Stock_Cover_Days", "Rs_Per_Case",
+            "Dock_Util_%", "Rent_Per_Sqft", "Cases_Per_MH",
+            "Avg_Order_Size", "Dispatch_Rank",
+        ]
+        display_cols = [c for c in display_cols if c in rlm_df.columns]
+
+        disp = rlm_df[display_cols].copy()
+        for c in disp.columns:
+            disp[c] = disp[c].apply(lambda v, cn=c: _fmt_rlm_cell(cn, v))
 
         def _style_rlm(df_row):
             styles = [""] * len(df_row)
-            cols_list = list(rlm_df.columns)
+            cols_list = list(disp.columns)
 
-            if "Fill_Rate_%" in cols_list:
-                fi = cols_list.index("Fill_Rate_%")
-                v  = df_row.iloc[fi]
-                if isinstance(v, (int, float)):
-                    styles[fi] = f"color: {fill_rate_color(v)}"
-
-            if "Return_Rate_%" in cols_list:
-                ri = cols_list.index("Return_Rate_%")
-                v  = df_row.iloc[ri]
-                if isinstance(v, (int, float)):
-                    styles[ri] = f"color: {rate_color(v)}"
+            for col_name, color_fn, default in [
+                ("Fill_Rate_%",   fill_rate_color, None),
+                ("Return_Rate_%", rate_color,       None),
+            ]:
+                if col_name in cols_list:
+                    i   = cols_list.index(col_name)
+                    raw = df_row.iloc[i]
+                    if raw != "—":
+                        try:
+                            styles[i] = f"color: {color_fn(float(raw.rstrip('%')))}"
+                        except Exception:
+                            pass
 
             if "Dispatch_Rank" in cols_list:
-                rki = cols_list.index("Dispatch_Rank")
-                v   = df_row.iloc[rki]
-                if isinstance(v, (int, float)) and v == 1:
-                    styles[rki] = "color: #27AE60; font-weight: 700"
+                i = cols_list.index("Dispatch_Rank")
+                if df_row.iloc[i] == "1":
+                    styles[i] = "color: #27AE60; font-weight: 700"
 
             return styles
 
-        display_df = rlm_df.copy()
-        display_df["Inv_Value_INR"] = display_df["Inv_Value_INR"].apply(fmt_currency)
-
         st.dataframe(
-            display_df.style.apply(_style_rlm, axis=1),
+            disp.style.apply(_style_rlm, axis=1),
             use_container_width=True,
             hide_index=True,
         )
 
-        # ── Cases Dispatched bar chart ────────────────────
+        # ── Dispatch bar chart ────────────────────────────
         try:
             import plotly.express as px
-            fig = px.bar(
-                rlm_df.sort_values("Cases_Dispatched", ascending=True),
-                x="Cases_Dispatched", y="Warehouse", orientation="h",
-                title=f"Cases Dispatched by Warehouse — {rlm_zone}",
-                color="Cases_Dispatched",
-                color_continuous_scale=["#1a3a5c", "#1565C0", "#27AE60"],
-                labels={"Cases_Dispatched": "Cases", "Warehouse": ""},
-            )
-            fig.update_layout(
-                paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
-                font_color="#FFFFFF", showlegend=False,
-                coloraxis_showscale=False,
-                height=max(300, len(rlm_df) * 35),
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            chart_df = rlm_df[rlm_df["Cases_Dispatched"] > 0].copy()
+            if not chart_df.empty:
+                fig = px.bar(
+                    chart_df.sort_values("Cases_Dispatched", ascending=True),
+                    x="Cases_Dispatched", y="Warehouse", orientation="h",
+                    title=f"Cases Dispatched — {rlm_zone}",
+                    color="Cases_Dispatched",
+                    color_continuous_scale=["#1a3a5c", "#1565C0", "#27AE60"],
+                    labels={"Cases_Dispatched": "Cases", "Warehouse": ""},
+                )
+                fig.update_layout(
+                    paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
+                    font_color="#FFFFFF", showlegend=False,
+                    coloraxis_showscale=False,
+                    height=max(300, len(chart_df) * 35),
+                )
+                st.plotly_chart(fig, use_container_width=True)
         except Exception:
             pass
 
@@ -402,8 +454,7 @@ with tab3:
 
     st.dataframe(
         error_df.style.map(_sev_style, subset=["Severity"]),
-        use_container_width=True,
-        hide_index=True,
+        use_container_width=True, hide_index=True,
     )
 
     st.markdown("---")
@@ -452,8 +503,7 @@ with tab4:
         tp_vendors   = tp["Source_Plant"].nunique()   if "Source_Plant" in tp.columns else 0
         tp_dests     = tp["Dest_City"].nunique()      if "Dest_City"    in tp.columns else 0
 
-        kc1, kc2, kc3, kc4 = st.columns(4)
-        for col, (title, val, sub) in zip([kc1, kc2, kc3, kc4], [
+        for col, (title, val, sub) in zip(st.columns(4), [
             ("TOTAL SHIPMENTS",     fmt_indian(tp_shipments), "rows in transport file"),
             ("TOTAL CASES",         fmt_indian(tp_cases),     "Billing_Qty sum"),
             ("UNIQUE SOURCES",      fmt_indian(tp_vendors),   "source plants"),
