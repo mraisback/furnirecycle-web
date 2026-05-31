@@ -78,6 +78,8 @@ def selector_bar(plant: str, zone: str) -> str:
 def fmt_indian(n: float) -> str:
     """Format number in Indian comma notation."""
     try:
+        if n is None or n != n:  # None / NaN (NaN is the only value != itself)
+            return "0"
         n = int(round(n))
         if n < 0:
             return f"-{fmt_indian(-n)}"

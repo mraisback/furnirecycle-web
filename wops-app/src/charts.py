@@ -137,3 +137,84 @@ def transport_material_bar(df: pd.DataFrame) -> go.Figure:
     fig.update_yaxes(title="Cases")
     fig.update_layout(showlegend=False)
     return _apply_base(fig)
+
+
+_TREND_COLORS = {
+    "Cases Ordered":    PALETTE["BLUE"],
+    "Cases Dispatched": PALETTE["GREEN"],
+    "Returned Cases":   PALETTE["RED"],
+}
+
+
+def _empty(msg: str) -> go.Figure:
+    fig = go.Figure()
+    fig.add_annotation(text=msg, showarrow=False,
+                       font=dict(color="#8AAAC8", size=14))
+    return _apply_base(fig)
+
+
+def trend_line(df: pd.DataFrame, title: str = "Trend over time") -> go.Figure:
+    """Multi-series line chart. ``df`` must have a 'Period' column plus one
+    column per numeric series."""
+    if df is None or df.empty or "Period" not in df.columns or df.shape[1] < 2:
+        return _empty("No trend data")
+    fig = go.Figure()
+    for col in [c for c in df.columns if c != "Period"]:
+        fig.add_trace(go.Scatter(
+            x=df["Period"], y=df[col], mode="lines+markers", name=col,
+            line=dict(width=2.5, color=_TREND_COLORS.get(col)),
+            marker=dict(size=5),
+        ))
+    fig.update_layout(
+        title=title,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5),
+        hovermode="x unified",
+    )
+    fig.update_yaxes(title="Cases", showgrid=True, gridcolor="#1E3A5F")
+    fig.update_xaxes(title="")
+    return _apply_base(fig)
+
+
+def pareto_chart(df: pd.DataFrame, cat_col: str, val_col: str,
+                 title: str = "Pareto") -> go.Figure:
+    """Bar (volume) + cumulative-% line on a secondary axis."""
+    if df is None or df.empty or cat_col not in df.columns or val_col not in df.columns:
+        return _empty("No data")
+    cats = df[cat_col].astype(str).tolist()
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=cats, y=df[val_col], name=val_col,
+        marker_color=PALETTE["BLUE"], yaxis="y1",
+    ))
+    if "Cum_%" in df.columns:
+        fig.add_trace(go.Scatter(
+            x=cats, y=df["Cum_%"], name="Cumulative %", mode="lines+markers",
+            line=dict(color=PALETTE["GOLD"], width=2.5), yaxis="y2",
+        ))
+        fig.add_hline(y=80, line_dash="dot", line_color="#C0392B", yref="y2")
+    fig.update_layout(
+        title=title,
+        yaxis=dict(title="Cases", gridcolor="#1E3A5F"),
+        yaxis2=dict(title="Cumulative %", overlaying="y", side="right",
+                    range=[0, 105], showgrid=False),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5),
+        xaxis=dict(tickangle=-35),
+    )
+    return _apply_base(fig)
+
+
+def hbar(df: pd.DataFrame, cat_col: str, val_col: str, title: str,
+         color: str = None) -> go.Figure:
+    """Generic horizontal bar (top-N already applied upstream)."""
+    if df is None or df.empty or cat_col not in df.columns or val_col not in df.columns:
+        return _empty("No data")
+    plot = df.sort_values(val_col, ascending=True)
+    fig = px.bar(
+        plot, x=val_col, y=cat_col, orientation="h", text=val_col, title=title,
+        color_discrete_sequence=[color or PALETTE["TEAL"]],
+    )
+    fig.update_traces(textposition="outside", textfont_color="#FFFFFF")
+    fig.update_yaxes(title="", showgrid=False)
+    fig.update_xaxes(title="", showgrid=True, gridcolor="#1E3A5F")
+    fig.update_layout(showlegend=False, height=max(300, len(plot) * 28))
+    return _apply_base(fig)

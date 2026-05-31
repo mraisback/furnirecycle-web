@@ -18,6 +18,7 @@ from src.kpis import (
 )
 from src.charts import returns_bar_chart, channel_pie_chart, transport_state_bar, transport_material_bar
 from src.error_detection import compute_error_log, get_missing_batch_detail, get_duplicate_invoices
+from src import analytics, panels
 
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
@@ -73,7 +74,12 @@ with st.sidebar:
         challan_types = st.multiselect("Delivery Challan types",  all_types, key="ch_types")
 
     st.markdown("---")
-    zone_sel = st.selectbox("Zone", ["All Zones", "North", "South", "East", "West"])
+    # Seed Zone from the URL (?zone=North) so a view can be bookmarked / shared.
+    _zone_opts = ["All Zones", "North", "South", "East", "West"]
+    _qp_zone = st.query_params.get("zone")
+    if _qp_zone in _zone_opts and "zone_box" not in st.session_state:
+        st.session_state["zone_box"] = _qp_zone
+    zone_sel = st.selectbox("Zone", _zone_opts, key="zone_box")
 
     st.markdown("---")
     st.markdown("**Parameters**")
@@ -134,12 +140,52 @@ if orders is not None and "Plant" in orders.columns:
 plant_display_options = ["All Plants"] + [plant_display(p) for p in all_plant_codes]
 plant_code_options    = ["All Plants"] + all_plant_codes
 
+# Seed Plant from the URL (?plant=5524) before the widget is instantiated.
+_qp_plant = st.query_params.get("plant")
+if (_qp_plant and _qp_plant in plant_code_options
+        and "plant_sel_real" not in st.session_state):
+    st.session_state["plant_sel_real"] = plant_display_options[
+        plant_code_options.index(_qp_plant)
+    ]
+
 plant_sel_disp = st.sidebar.selectbox("Plant", plant_display_options, key="plant_sel_real")
 plant_sel = (
     "All Plants"
     if plant_sel_disp == "All Plants"
     else plant_code_options[plant_display_options.index(plant_sel_disp)]
 )
+
+# Persist the current Zone/Plant selection to the URL for bookmarking/sharing.
+st.query_params["zone"] = zone_sel
+st.query_params["plant"] = plant_sel
+
+# ── DATE RANGE + ALERT THRESHOLDS ────────────────────────────────────────────
+_dmin, _dmax = analytics.date_bounds([
+    (orders, "Order_Date"), (despatch, "Despatch_Date"), (returns, "Return_Date"),
+])
+date_range = None
+if _dmin is not None and _dmax is not None and _dmin < _dmax:
+    _picked = st.sidebar.date_input(
+        "📅 Date range", value=(_dmin, _dmax),
+        min_value=_dmin, max_value=_dmax, key="date_range",
+    )
+    if isinstance(_picked, (tuple, list)) and len(_picked) == 2 and all(_picked):
+        date_range = (_picked[0], _picked[1])
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("**🔔 Alert thresholds**")
+rr_warn = st.sidebar.number_input(
+    "Return-rate warning %", min_value=0.0, max_value=100.0, value=2.0, step=0.5,
+    key="rr_warn",
+)
+rr_crit = st.sidebar.number_input(
+    "Return-rate critical %", min_value=0.0, max_value=100.0, value=5.0, step=0.5,
+    key="rr_crit",
+)
+near_exp_days = int(st.sidebar.number_input(
+    "Near-expiry window (days)", min_value=1, max_value=365, value=30, step=1,
+    key="near_exp_days",
+))
 
 
 # ── FILTERING ─────────────────────────────────────────────────────────────────
@@ -154,10 +200,20 @@ f_inventory = flt(inventory)
 f_inv_acc   = flt(inv_accuracy)
 f_transport = flt(transport)
 
+# Date-range filter on the transactional frames (inventory is a point-in-time
+# snapshot, so it is intentionally excluded).
+if date_range is not None:
+    _ds, _de = date_range
+    f_orders    = analytics.filter_by_date(f_orders,    "Order_Date",    _ds, _de)
+    f_despatch  = analytics.filter_by_date(f_despatch,  "Despatch_Date", _ds, _de)
+    f_returns   = analytics.filter_by_date(f_returns,   "Return_Date",   _ds, _de)
+    f_receiving = analytics.filter_by_date(f_receiving, "Receipt_Date",  _ds, _de)
+
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊 Dashboard", "🏭 RLM Zone View", "⚠ Error Log", "🚚 Transport", "📋 Raw Data"
+tab1, tab2, tab_tr, tab_cu, tab3, tab4, tab5 = st.tabs([
+    "📊 Dashboard", "🏭 RLM Zone View", "📈 Trends", "👥 Customers & Products",
+    "⚠ Error Log", "🚚 Transport", "📋 Raw Data",
 ])
 
 
@@ -176,6 +232,12 @@ with tab1:
         parts.append(f"Latest despatch: **{freshness['max_despatch_date'].strftime('%d %b %Y')}**")
     if parts:
         st.caption("📅 " + "  |  ".join(parts))
+
+    # ── ALERTS — threshold-driven exceptions ─────────────
+    panels.render_alerts(
+        f_despatch, f_returns, f_inventory,
+        rr_warn, rr_crit, near_exp_days, plant_display,
+    )
 
     # ── PRIMARY KPIs — row 1: volume ─────────────────────
     primary        = compute_primary_kpis(f_orders, f_despatch, f_returns)
@@ -286,6 +348,9 @@ with tab1:
         else:
             st.info("No channel data for selection")
         st.plotly_chart(channel_pie_chart(channel_df), use_container_width=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    panels.render_sku_drilldown(f_orders, f_returns)
 
 
 # ════════════════════════════════════════════════════════
@@ -547,6 +612,9 @@ with tab4:
             )
             st.dataframe(state_grp, use_container_width=True, height=300, hide_index=True)
 
+        st.markdown("<br>", unsafe_allow_html=True)
+        panels.render_vendors(tp)
+
 
 # ════════════════════════════════════════════════════════
 # TAB 5 — RAW DATA
@@ -587,17 +655,21 @@ with tab5:
 
     st.markdown("---")
 
-    for name, df in export_tables:
-        rows = len(df) if df is not None else 0
-        with st.expander(f"{name} — {rows:,} rows"):
-            if df is not None and not df.empty:
-                st.dataframe(df, use_container_width=True, height=300, hide_index=True)
-                st.download_button(
-                    label=f"⬇ Download {name} CSV",
-                    data=df.to_csv(index=False).encode("utf-8"),
-                    file_name=f"{name.lower().replace(' ', '_')}.csv",
-                    mime="text/csv",
-                    key=f"dl_{name}",
-                )
-            else:
-                st.info(f"No data available for {name}")
+    for _i, (name, df) in enumerate(export_tables):
+        panels.searchable_table(name, df, key=f"raw{_i}")
+
+
+# ════════════════════════════════════════════════════════
+# TAB — TRENDS
+# ════════════════════════════════════════════════════════
+with tab_tr:
+    st.markdown(selector_bar(plant_sel_disp, zone_sel), unsafe_allow_html=True)
+    panels.render_trends(f_orders, f_despatch, f_returns)
+
+
+# ════════════════════════════════════════════════════════
+# TAB — CUSTOMERS & PRODUCTS
+# ════════════════════════════════════════════════════════
+with tab_cu:
+    st.markdown(selector_bar(plant_sel_disp, zone_sel), unsafe_allow_html=True)
+    panels.render_customers(f_orders, f_returns)
