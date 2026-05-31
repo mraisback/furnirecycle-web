@@ -167,12 +167,12 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     st.markdown(selector_bar(plant_sel_disp, zone_sel), unsafe_allow_html=True)
 
-    # Data freshness indicator
+    # Data freshness indicator (pd.notna guards against NaT, which is truthy)
     freshness = compute_data_freshness(f_orders, f_despatch)
     parts = []
-    if freshness["max_order_date"]:
+    if pd.notna(freshness["max_order_date"]):
         parts.append(f"Latest order: **{freshness['max_order_date'].strftime('%d %b %Y')}**")
-    if freshness["max_despatch_date"]:
+    if pd.notna(freshness["max_despatch_date"]):
         parts.append(f"Latest despatch: **{freshness['max_despatch_date'].strftime('%d %b %Y')}**")
     if parts:
         st.caption("📅 " + "  |  ".join(parts))
@@ -313,53 +313,55 @@ with tab2:
         rlm_df.insert(1, "Warehouse", rlm_df["Plant"].apply(plant_display))
 
         # ── Summary callouts ─────────────────────────────
-        best_idx  = rlm_df["Cases_Dispatched"].idxmax()
-        worst_fr  = rlm_df["Fill_Rate_%"].idxmin()
-        worst_rr  = rlm_df["Return_Rate_%"].idxmax()
+        # Safe extremum helpers: return None when the column is empty / all-NaN
+        # (idxmin/idxmax raise ValueError "Encountered all NA values" otherwise).
+        def _safe_idx(col, how="max"):
+            s = rlm_df[col].dropna()
+            if s.empty:
+                return None
+            return s.idxmax() if how == "max" else s.idxmin()
+
+        best_idx = _safe_idx("Cases_Dispatched", "max")
+        worst_fr = _safe_idx("Fill_Rate_%", "min")
+        worst_rr = _safe_idx("Return_Rate_%", "max")
 
         c1, c2, c3 = st.columns(3)
         with c1:
-            st.markdown(kpi_card(
-                "TOP DISPATCHER",
-                fmt_indian(rlm_df.loc[best_idx, "Cases_Dispatched"]),
-                rlm_df.loc[best_idx, "Warehouse"],
-                "#27AE60", "#27AE60"
-            ), unsafe_allow_html=True)
+            if best_idx is not None and rlm_df.loc[best_idx, "Cases_Dispatched"] > 0:
+                st.markdown(kpi_card(
+                    "TOP DISPATCHER",
+                    fmt_indian(rlm_df.loc[best_idx, "Cases_Dispatched"]),
+                    rlm_df.loc[best_idx, "Warehouse"],
+                    "#27AE60", "#27AE60"
+                ), unsafe_allow_html=True)
+            else:
+                st.markdown(kpi_card("TOP DISPATCHER", "—", "no despatch data",
+                                     "#27AE60", "#FFFFFF"), unsafe_allow_html=True)
         with c2:
-            low_fr = rlm_df.loc[worst_fr, "Fill_Rate_%"]
-            st.markdown(kpi_card(
-                "LOWEST FILL RATE",
-                f"{low_fr:.1f}%" if pd.notna(low_fr) else "—",
-                rlm_df.loc[worst_fr, "Warehouse"],
-                "#E67E22", fill_rate_color(low_fr) if pd.notna(low_fr) else "#FFFFFF"
-            ), unsafe_allow_html=True)
+            if worst_fr is not None:
+                low_fr = rlm_df.loc[worst_fr, "Fill_Rate_%"]
+                st.markdown(kpi_card(
+                    "LOWEST FILL RATE", f"{low_fr:.1f}%",
+                    rlm_df.loc[worst_fr, "Warehouse"],
+                    "#E67E22", fill_rate_color(low_fr)
+                ), unsafe_allow_html=True)
+            else:
+                st.markdown(kpi_card("LOWEST FILL RATE", "—", "no order data",
+                                     "#E67E22", "#FFFFFF"), unsafe_allow_html=True)
         with c3:
-            high_rr = rlm_df.loc[worst_rr, "Return_Rate_%"]
-            st.markdown(kpi_card(
-                "HIGHEST RETURN RATE",
-                f"{high_rr:.1f}%" if pd.notna(high_rr) else "—",
-                rlm_df.loc[worst_rr, "Warehouse"],
-                "#C0392B", rate_color(high_rr) if pd.notna(high_rr) else "#FFFFFF"
-            ), unsafe_allow_html=True)
+            if worst_rr is not None:
+                high_rr = rlm_df.loc[worst_rr, "Return_Rate_%"]
+                st.markdown(kpi_card(
+                    "HIGHEST RETURN RATE", f"{high_rr:.1f}%",
+                    rlm_df.loc[worst_rr, "Warehouse"],
+                    "#C0392B", rate_color(high_rr)
+                ), unsafe_allow_html=True)
+            else:
+                st.markdown(kpi_card("HIGHEST RETURN RATE", "—", "no despatch data",
+                                     "#C0392B", "#FFFFFF"), unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### Warehouse KPI Summary")
-
-        # Build a display version: format NaN as "—" for string cols, keep currency
-        def _fmt_rlm_cell(col_name, val):
-            if pd.isna(val):
-                return "—"
-            if col_name == "Inv_Value_INR":
-                return fmt_currency(val)
-            if col_name in ("Rs_Per_Case", "Rent_Per_Sqft"):
-                return f"₹{val:,.2f}"
-            if col_name in ("Fill_Rate_%", "Return_Rate_%", "Dock_Util_%"):
-                return f"{val:.1f}%"
-            if col_name == "Stock_Cover_Days":
-                return f"{val:.1f}"
-            if isinstance(val, float):
-                return f"{val:.1f}"
-            return str(val)
 
         display_cols = [
             "Plant", "Warehouse", "Cases_Ordered", "Cases_Dispatched",
@@ -369,40 +371,55 @@ with tab2:
             "Avg_Order_Size", "Dispatch_Rank",
         ]
         display_cols = [c for c in display_cols if c in rlm_df.columns]
+        disp_num = rlm_df[display_cols].copy()
 
-        disp = rlm_df[display_cols].copy()
-        for c in disp.columns:
-            disp[c] = disp[c].apply(lambda v, cn=c: _fmt_rlm_cell(cn, v))
+        # Formatters operate on display only; Styler.apply still sees raw numerics,
+        # so colour logic never parses strings (robust against NaN → "—").
+        _pct = lambda v: f"{v:.1f}%"
+        _rs  = lambda v: f"₹{v:,.2f}"
+        fmt_map = {
+            "Cases_Ordered":    fmt_indian,
+            "Cases_Dispatched": fmt_indian,
+            "Cases_Received":   fmt_indian,
+            "Returned_Cases":   fmt_indian,
+            "Inv_Value_INR":    fmt_currency,
+            "Fill_Rate_%":      _pct,
+            "Return_Rate_%":    _pct,
+            "Dock_Util_%":      _pct,
+            "Rs_Per_Case":      _rs,
+            "Rent_Per_Sqft":    _rs,
+            "Stock_Cover_Days": lambda v: f"{v:.1f}",
+            "Cases_Per_MH":     lambda v: f"{v:.1f}",
+            "Avg_Order_Size":   lambda v: f"{v:.1f}",
+            "Dispatch_Rank":    lambda v: f"{int(v)}",
+        }
+        fmt_map = {k: v for k, v in fmt_map.items() if k in disp_num.columns}
 
-        def _style_rlm(df_row):
-            styles = [""] * len(df_row)
-            cols_list = list(disp.columns)
+        _disp_max = float(disp_num["Cases_Dispatched"].max()) if "Cases_Dispatched" in disp_num.columns else 0.0
 
-            for col_name, color_fn, default in [
-                ("Fill_Rate_%",   fill_rate_color, None),
-                ("Return_Rate_%", rate_color,       None),
-            ]:
-                if col_name in cols_list:
-                    i   = cols_list.index(col_name)
-                    raw = df_row.iloc[i]
-                    if raw != "—":
-                        try:
-                            styles[i] = f"color: {color_fn(float(raw.rstrip('%')))}"
-                        except Exception:
-                            pass
+        def _color_col(col):
+            name = col.name
+            if name == "Fill_Rate_%":
+                return [f"color: {fill_rate_color(v)}" if pd.notna(v) else "" for v in col]
+            if name == "Return_Rate_%":
+                return [f"color: {rate_color(v)}" if pd.notna(v) else "" for v in col]
+            if name == "Dispatch_Rank":
+                return ["color: #27AE60; font-weight: 700"
+                        if (pd.notna(v) and v == 1) else "" for v in col]
+            if name == "Cases_Dispatched" and _disp_max > 0:
+                # Manual green heatmap (no matplotlib dependency)
+                out = []
+                for v in col:
+                    if pd.notna(v) and v > 0:
+                        alpha = 0.12 + 0.45 * (float(v) / _disp_max)
+                        out.append(f"background-color: rgba(39, 174, 96, {alpha:.2f})")
+                    else:
+                        out.append("")
+                return out
+            return [""] * len(col)
 
-            if "Dispatch_Rank" in cols_list:
-                i = cols_list.index("Dispatch_Rank")
-                if df_row.iloc[i] == "1":
-                    styles[i] = "color: #27AE60; font-weight: 700"
-
-            return styles
-
-        st.dataframe(
-            disp.style.apply(_style_rlm, axis=1),
-            use_container_width=True,
-            hide_index=True,
-        )
+        styler = disp_num.style.format(fmt_map, na_rep="—").apply(_color_col, axis=0)
+        st.dataframe(styler, use_container_width=True, hide_index=True)
 
         # ── Dispatch bar chart ────────────────────────────
         try:
@@ -537,14 +554,40 @@ with tab4:
 with tab5:
     st.subheader("📋 Raw Data Export")
 
-    for name, df in [
+    export_tables = [
         ("Customer Orders",     f_orders),
         ("Order Despatch",      f_despatch),
         ("Returns",             f_returns),
         ("Receiving",           f_receiving),
         ("Month-End Inventory", f_inventory),
         ("Inventory Accuracy",  f_inv_acc),
-    ]:
+    ]
+
+    # Combined multi-sheet Excel workbook for the current filter selection
+    _have_data = any(d is not None and not d.empty for _, d in export_tables)
+    if _have_data:
+        import io as _io
+        _buf = _io.BytesIO()
+        try:
+            with pd.ExcelWriter(_buf, engine="openpyxl") as _writer:
+                for _name, _df in export_tables:
+                    if _df is not None and not _df.empty:
+                        # Excel sheet names cap at 31 chars and forbid some symbols
+                        _sheet = _name[:31].replace("/", "-")
+                        _df.to_excel(_writer, sheet_name=_sheet, index=False)
+            st.download_button(
+                label="⬇ Download ALL tables as one Excel workbook",
+                data=_buf.getvalue(),
+                file_name="wops_export.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_workbook",
+            )
+        except Exception as _e:
+            st.caption(f"Excel export unavailable ({_e}). Use per-table CSV below.")
+
+    st.markdown("---")
+
+    for name, df in export_tables:
         rows = len(df) if df is not None else 0
         with st.expander(f"{name} — {rows:,} rows"):
             if df is not None and not df.empty:

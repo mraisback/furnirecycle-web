@@ -67,20 +67,32 @@ def _to_numeric(series: pd.Series) -> pd.Series:
 
 
 def _to_date(series: pd.Series) -> pd.Series:
-    """Parse dates — bulk pd.to_datetime first; Excel serial fallback for remaining NaT."""
-    result = pd.to_datetime(series, errors="coerce")
+    """Parse a column of dates that may be datetimes, ISO strings, or Excel serials.
 
-    nat_mask = result.isna() & series.notna()
-    if nat_mask.any():
-        raw = series[nat_mask]
-        serials = pd.to_numeric(
-            raw.astype(str).str.replace(",", "", regex=False).str.strip(),
-            errors="coerce",
-        )
-        valid = (serials > 1) & (serials < 200000)
-        parsed = _EXCEL_EPOCH + pd.to_timedelta(serials.where(valid), unit="D")
-        result = result.copy()
-        result[nat_mask] = parsed
+    CRITICAL: Excel serials are numbers like 45000 (days since 1899-12-30). They must
+    NOT be passed to pd.to_datetime first, which would interpret a bare integer as
+    nanoseconds since 1970 (turning 45000 into 1970-01-01). So the numeric-serial
+    branch is handled explicitly before falling back to general datetime parsing.
+    """
+    # Fast path: already a proper datetime dtype.
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return series
+
+    result = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
+
+    # Branch 1 — numeric Excel serials (ints, floats, and numeric strings like "45000.0").
+    numeric = pd.to_numeric(
+        series.astype(str).str.replace(",", "", regex=False).str.strip(),
+        errors="coerce",
+    )
+    serial_mask = numeric.notna() & (numeric > 1) & (numeric < 200000)
+    if serial_mask.any():
+        result[serial_mask] = _EXCEL_EPOCH + pd.to_timedelta(numeric[serial_mask], unit="D")
+
+    # Branch 2 — real date strings / datetime objects via general parser.
+    remaining = result.isna() & series.notna()
+    if remaining.any():
+        result[remaining] = pd.to_datetime(series[remaining], errors="coerce")
 
     return result
 

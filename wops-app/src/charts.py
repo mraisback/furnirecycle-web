@@ -84,7 +84,7 @@ def channel_pie_chart(df: pd.DataFrame) -> go.Figure:
 
 
 def transport_state_bar(df: pd.DataFrame) -> go.Figure:
-    if df.empty:
+    if df.empty or "Dest_State" not in df.columns or "Billing_Qty" not in df.columns:
         fig = go.Figure()
         fig.add_annotation(text="No transport data", showarrow=False,
                            font=dict(color="#8AAAC8", size=14))
@@ -112,7 +112,7 @@ def transport_state_bar(df: pd.DataFrame) -> go.Figure:
 
 
 def transport_material_bar(df: pd.DataFrame) -> go.Figure:
-    if df.empty:
+    if df.empty or "Material_Type" not in df.columns or "Billing_Qty" not in df.columns:
         fig = go.Figure()
         fig.add_annotation(text="No transport data", showarrow=False,
                            font=dict(color="#8AAAC8", size=14))
