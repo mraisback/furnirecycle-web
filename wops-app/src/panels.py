@@ -104,7 +104,7 @@ def render_trends(orders, despatch, returns):
         latest = series.iloc[-1]
         prev = series.iloc[-2] if len(series) > 1 else 0
         delta = (latest - prev)
-        delta_pct = (delta / prev * 100) if prev else 0
+        delta_pct = (delta / prev * 100) if (prev and pd.notna(prev) and pd.notna(delta)) else 0
         with col:
             st.metric(
                 f"{name} — latest period",

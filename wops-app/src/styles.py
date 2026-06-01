@@ -106,25 +106,40 @@ def fmt_currency(n: float) -> str:
 
 def rate_color(rate: float, thresholds=(2.0, 5.0),
                colors=("#27AE60", "#E67E22", "#C0392B")) -> str:
-    if rate < thresholds[0]:
-        return colors[0]
-    if rate < thresholds[1]:
-        return colors[1]
+    try:
+        if rate is None or rate != rate:  # NaN guard
+            return colors[2]
+        if rate < thresholds[0]:
+            return colors[0]
+        if rate < thresholds[1]:
+            return colors[1]
+    except TypeError:
+        pass
     return colors[2]
 
 
 def accuracy_color(acc: float) -> str:
-    if acc >= 97:
-        return "#27AE60"
-    if acc >= 90:
-        return "#E67E22"
+    try:
+        if acc is None or acc != acc:
+            return "#C0392B"
+        if acc >= 97:
+            return "#27AE60"
+        if acc >= 90:
+            return "#E67E22"
+    except TypeError:
+        pass
     return "#C0392B"
 
 
 def fill_rate_color(rate: float) -> str:
     """Green ≥95%, orange 85-95%, red <85%."""
-    if rate >= 95:
-        return "#27AE60"
-    if rate >= 85:
-        return "#E67E22"
+    try:
+        if rate is None or rate != rate:
+            return "#C0392B"
+        if rate >= 95:
+            return "#27AE60"
+        if rate >= 85:
+            return "#E67E22"
+    except TypeError:
+        pass
     return "#C0392B"

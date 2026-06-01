@@ -440,8 +440,14 @@ with tab2:
 
         # Formatters operate on display only; Styler.apply still sees raw numerics,
         # so colour logic never parses strings (robust against NaN → "—").
-        _pct = lambda v: f"{v:.1f}%"
-        _rs  = lambda v: f"₹{v:,.2f}"
+        def _pct(v):
+            return "—" if not pd.notna(v) else f"{v:.1f}%"
+        def _rs(v):
+            return "—" if not pd.notna(v) else f"₹{v:,.2f}"
+        def _f1(v):
+            return "—" if not pd.notna(v) else f"{v:.1f}"
+        def _rank(v):
+            return "—" if not pd.notna(v) else f"{int(v)}"
         fmt_map = {
             "Cases_Ordered":    fmt_indian,
             "Cases_Dispatched": fmt_indian,
@@ -453,10 +459,10 @@ with tab2:
             "Dock_Util_%":      _pct,
             "Rs_Per_Case":      _rs,
             "Rent_Per_Sqft":    _rs,
-            "Stock_Cover_Days": lambda v: f"{v:.1f}",
-            "Cases_Per_MH":     lambda v: f"{v:.1f}",
-            "Avg_Order_Size":   lambda v: f"{v:.1f}",
-            "Dispatch_Rank":    lambda v: f"{int(v)}",
+            "Stock_Cover_Days": _f1,
+            "Cases_Per_MH":     _f1,
+            "Avg_Order_Size":   _f1,
+            "Dispatch_Rank":    _rank,
         }
         fmt_map = {k: v for k, v in fmt_map.items() if k in disp_num.columns}
 
