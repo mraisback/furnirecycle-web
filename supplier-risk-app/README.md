@@ -44,15 +44,31 @@ supplier-risk-app/
 
 ## What's included
 
-- **Overview** — KPIs, risk-zone donut, top 5 riskiest suppliers, live feed.
-- **Suppliers** — filterable directory (zone, category, free-text search) with
-  sparkline trends and traffic-light pills.
-- **Supplier detail** — signals, sub-category score breakdown, recommended
-  action, and one-click "Create task in Ariba" / "Notify buyer" stubs.
+- **Overview** — KPIs, risk-zone donut, spend-weighted **portfolio risk line
+  chart**, top 5 riskiest suppliers, live intelligence feed.
+- **Suppliers** — filterable directory (zone, category, free-text search),
+  **sortable columns**, gradient sparklines, traffic-light pills, **star to
+  watchlist**, and **working CSV export**.
+- **Supplier detail** — risk-history line chart, signals, sub-category score
+  breakdown, **qualified backup suppliers**, recommended action, and
+  toast-confirmed "Create task in Ariba" / "Notify buyer" actions.
 - **Alerts** — full intelligence feed, filterable by severity.
-- **Analytics** — signals-by-category bar chart, spend-at-risk by category,
+- **Watchlist** — suppliers you've starred, persisted in `localStorage`.
+- **Analytics** — portfolio trend, signals-by-category bar chart, spend-at-risk,
   business-case numbers from the briefing.
+- **Settings** — tune Amber/Red thresholds, toggle Live mode, clear data.
 - **About** — plain-English explanation of how the system works.
+
+### Robustness & polish
+
+- **Hash routing** (`#/overview`, `#/supplier/uflex`, …) — deep-linkable,
+  refresh-safe, browser back/forward works.
+- **Error boundary** — a view error shows a recovery card, never a white screen.
+- **Command palette** — press <kbd>⌘/Ctrl</kbd>+<kbd>K</kbd> to jump to any page
+  or supplier.
+- **Light / dark theme** toggle, **Live mode** (simulated score drift), toast
+  notifications, keyboard-navigable nav, ARIA roles, reduced-motion support.
+- State (theme, watchlist, thresholds) persists across reloads.
 
 ## Wiring real data in
 

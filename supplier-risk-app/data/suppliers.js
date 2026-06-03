@@ -275,12 +275,72 @@ window.SUPPLIERS = [
 // Aggregate stats derived from the supplier list — used on Overview screen.
 window.computeStats = function () {
   const all = window.SUPPLIERS;
-  const red = all.filter(s => s.score >= 60).length;
-  const amber = all.filter(s => s.score >= 35 && s.score < 60).length;
+  const z = s => (window.zoneOf ? window.zoneOf(s.score) : (s.score >= 60 ? "red" : s.score >= 35 ? "amber" : "green"));
+  const red = all.filter(s => z(s) === "red").length;
+  const amber = all.filter(s => z(s) === "amber").length;
   const green = all.length - red - amber;
   const totalSpend = all.reduce((a, s) => a + s.spendCr, 0);
-  const atRiskSpend = all.filter(s => s.score >= 35).reduce((a, s) => a + s.spendCr, 0);
+  const atRiskSpend = all.filter(s => z(s) !== "green").reduce((a, s) => a + s.spendCr, 0);
   return { red, amber, green, total: all.length, totalSpend, atRiskSpend };
+};
+
+// ---------------------------------------------------------------------------
+// Enrichment: add region / tier / backup-supplier metadata + a longer monthly
+// risk history derived from the short trend. Done programmatically so the core
+// records above stay readable.
+// ---------------------------------------------------------------------------
+(function enrich() {
+  const REGIONS = ["North", "West", "South", "East"];
+  const MONTHS = ["Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+  const BACKUPS = {
+    uflex: ["cosmo", "jindal"],
+    huhtamaki: ["ester"],
+    manjushree: ["polyplex"],
+    swastik: ["jindal", "polyplex"],
+    givaudan: ["symrise", "iff"],
+    iff: ["givaudan", "sensient"],
+    symrise: ["firmenich"]
+  };
+  window.SUPPLIERS.forEach((s, i) => {
+    s.region = s.region || REGIONS[i % REGIONS.length];
+    s.tier = s.spendCr >= 150 ? 1 : s.spendCr >= 70 ? 2 : 3;
+    s.backups = BACKUPS[s.id] || [];
+    // Map the 7-point trend onto labelled monthly history for charts.
+    s.history = (s.trend || []).map((v, idx) => ({
+      label: MONTHS[idx] || `M${idx + 1}`,
+      value: v
+    }));
+    // Keep an immutable baseline so "live mode" can drift without losing truth.
+    s._baseScore = s.score;
+  });
+})();
+
+// Risk zone helpers shared by data + UI. Thresholds are overridable so the
+// Settings page can re-tune Amber/Red bands at runtime.
+window.RISK_THRESHOLDS = { amber: 35, red: 60 };
+window.zoneOf = function (score, t) {
+  t = t || window.RISK_THRESHOLDS;
+  if (score >= t.red) return "red";
+  if (score >= t.amber) return "amber";
+  return "green";
+};
+
+// Portfolio risk over time = spend-weighted average of every supplier's monthly
+// history. Drives the headline trend chart on the Overview/Analytics pages.
+window.computePortfolioHistory = function () {
+  const all = window.SUPPLIERS;
+  const len = Math.max(...all.map(s => (s.history || []).length), 0);
+  const totalSpend = all.reduce((a, s) => a + s.spendCr, 0) || 1;
+  const out = [];
+  for (let i = 0; i < len; i++) {
+    let acc = 0, label = "";
+    all.forEach(s => {
+      const pt = (s.history || [])[i];
+      if (pt) { acc += pt.value * s.spendCr; label = pt.label; }
+    });
+    out.push({ label, value: Math.round(acc / totalSpend) });
+  }
+  return out;
 };
 
 // Alert feed = signals across all suppliers, sorted by date desc + severity weight.

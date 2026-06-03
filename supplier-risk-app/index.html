@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -15,6 +15,11 @@
   <div id="root">
     <div style="padding:40px;color:#9aa3c7;font-family:Inter,sans-serif">Loading Supplier Risk AI…</div>
   </div>
+  <noscript><div style="padding:40px;color:#9aa3c7;font-family:sans-serif">This dashboard requires JavaScript to run.</div></noscript>
+  <script>
+    // Apply persisted theme before React mounts to avoid a flash of the wrong theme.
+    try { var t = JSON.parse(localStorage.getItem("srisk.theme")); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+  </script>
 
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
