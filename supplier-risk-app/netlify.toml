@@ -1,0 +1,16 @@
+# Netlify config. If deploying the whole repo, set the base/publish to this folder.
+# If you drag-and-drop just the supplier-risk-app/ folder, this file works as-is.
+
+[build]
+  publish = "."
+  command = ""
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"

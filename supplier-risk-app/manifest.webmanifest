@@ -1,0 +1,18 @@
+{
+  "name": "Supplier Risk AI — PepsiCo India",
+  "short_name": "Supplier Risk AI",
+  "description": "AI-powered early warning system that flags supplier distress 3-9 months before it hurts production.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
