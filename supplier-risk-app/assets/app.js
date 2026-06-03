@@ -859,12 +859,20 @@ function App() {
       });
       force(n => n + 1);
     }, 2500);
-    return () => clearInterval(t);
+    return () => {
+      clearInterval(t);
+      // Restore baseline scores so toggling Live off returns to the real data.
+      window.SUPPLIERS.forEach(s => {
+        s.score = s._baseScore;
+        s.delta = s._baseDelta;
+        if (s.history && s.history.length) s.history[s.history.length - 1].value = s._baseScore;
+      });
+      force(n => n + 1);
+    };
   }, [settings.live]);
 
   const stats = window.computeStats();
   const [t, sub] = TITLES[route.page] || TITLES.overview;
-  const isSuppliersArea = route.page === "suppliers" || route.page === "supplier";
 
   return (
     <AppCtx.Provider value={{ toast, watchlist, toggleWatch, setWatchlist, settings, setSettings }}>

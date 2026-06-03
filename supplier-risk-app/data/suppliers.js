@@ -310,8 +310,10 @@ window.computeStats = function () {
       label: MONTHS[idx] || `M${idx + 1}`,
       value: v
     }));
-    // Keep an immutable baseline so "live mode" can drift without losing truth.
+    // Keep an immutable baseline so "live mode" can drift without losing truth,
+    // and can fully restore the original state when toggled off.
     s._baseScore = s.score;
+    s._baseDelta = s.delta;
   });
 })();
 
