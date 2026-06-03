@@ -20,15 +20,22 @@ Or just double-click `index.html` (some browsers block CDN scripts on
 
 ## Deploy
 
-This is a static site. Any static host works:
+This is a static site — no environment variables, no API keys, no backend.
+It's also an installable **PWA** (offline-capable after first load via
+`sw.js` + `manifest.webmanifest`).
 
-- **Vercel / Netlify**: drag-and-drop the `supplier-risk-app/` folder, or point
-  the project at this directory.
-- **GitHub Pages**: push to a branch and enable Pages with the `supplier-risk-app/`
-  folder as the source.
-- **Cloudflare Pages / S3 + CloudFront**: upload as-is.
+- **GitHub Pages (automated):** `.github/workflows/deploy-pages.yml` builds and
+  publishes the `supplier-risk-app/` folder on every push to `main`. Just enable
+  Pages → Source: GitHub Actions in repo settings.
+- **Vercel:** import the repo, set **Root Directory** to `supplier-risk-app`.
+  `vercel.json` handles caching headers. No build command needed.
+- **Netlify:** point the site at this folder (`netlify.toml` sets publish dir),
+  or drag-and-drop the `supplier-risk-app/` folder into the Netlify UI.
+- **Cloudflare Pages / S3 + CloudFront / any static host:** upload the folder
+  as-is.
 
-There are no environment variables, no API keys, no backend.
+> Note: the service worker and PWA install require serving over `http(s)`
+> (not `file://`).
 
 ## Project structure
 
@@ -54,8 +61,10 @@ supplier-risk-app/
   toast-confirmed "Create task in Ariba" / "Notify buyer" actions.
 - **Alerts** — full intelligence feed, filterable by severity.
 - **Watchlist** — suppliers you've starred, persisted in `localStorage`.
+- **Compare** — put up to 4 suppliers side by side across score, spend, signals,
+  trend, backups and recommendation.
 - **Analytics** — portfolio trend, signals-by-category bar chart, spend-at-risk,
-  business-case numbers from the briefing.
+  **risk-vs-spend bubble matrix**, business-case numbers from the briefing.
 - **Settings** — tune Amber/Red thresholds, toggle Live mode, clear data.
 - **About** — plain-English explanation of how the system works.
 
@@ -69,6 +78,8 @@ supplier-risk-app/
 - **Light / dark theme** toggle, **Live mode** (simulated score drift), toast
   notifications, keyboard-navigable nav, ARIA roles, reduced-motion support.
 - State (theme, watchlist, thresholds) persists across reloads.
+- **Installable PWA** with offline caching; pinned CDN versions and a graceful
+  fallback message if dependencies are blocked.
 
 ## Wiring real data in
 

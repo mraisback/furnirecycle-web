@@ -190,6 +190,37 @@ function Star({ id }) {
     onClick={e => { e.stopPropagation(); toggleWatch(id); }}>{on ? "★" : "☆"}</span>;
 }
 
+function RiskMatrix({ go }) {
+  const all = window.SUPPLIERS;
+  const w = 600, h = 320, padL = 44, padB = 40, padT = 14, padR = 16;
+  const maxSpend = Math.max(...all.map(s => s.spendCr), 1);
+  const sx = v => padL + (v / maxSpend) * (w - padL - padR);
+  const sy = v => padT + (1 - v / 100) * (h - padT - padB);
+  const t = window.RISK_THRESHOLDS;
+  return (
+    <svg className="line-chart" style={{ height: 320 }} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Risk vs spend matrix">
+      {/* zone bands */}
+      <rect x={padL} y={sy(100)} width={w - padL - padR} height={sy(t.red) - sy(100)} fill="var(--red)" opacity="0.06" />
+      <rect x={padL} y={sy(t.red)} width={w - padL - padR} height={sy(t.amber) - sy(t.red)} fill="var(--amber)" opacity="0.06" />
+      <rect x={padL} y={sy(t.amber)} width={w - padL - padR} height={sy(0) - sy(t.amber)} fill="var(--green)" opacity="0.06" />
+      {[0, 25, 50, 75, 100].map(g => (
+        <g key={g}><line x1={padL} x2={w - padR} y1={sy(g)} y2={sy(g)} stroke="var(--border)" strokeOpacity="0.5" />
+          <text x={padL - 8} y={sy(g) + 3} textAnchor="end" fill="var(--muted-2)" fontSize="9">{g}</text></g>
+      ))}
+      {all.map(s => {
+        const z = zoneOf(s.score);
+        return <g key={s.id} style={{ cursor: "pointer" }} onClick={() => go("supplier", s.id)}>
+          <circle cx={sx(s.spendCr)} cy={sy(s.score)} r={s.tier === 1 ? 9 : s.tier === 2 ? 7 : 5} fill={zoneColor(z)} fillOpacity="0.85" stroke="var(--bg)" strokeWidth="1.5">
+            <title>{s.name} · {fmtCr(s.spendCr)} · score {s.score}</title>
+          </circle>
+        </g>;
+      })}
+      <text x={(w) / 2} y={h - 6} textAnchor="middle" fill="var(--muted)" fontSize="10">Annual spend →</text>
+      <text x={12} y={h / 2} textAnchor="middle" fill="var(--muted)" fontSize="10" transform={`rotate(-90 12 ${h / 2})`}>Risk score →</text>
+    </svg>
+  );
+}
+
 /* ---------- pages ---------- */
 
 function Overview({ go }) {
@@ -508,7 +539,7 @@ function Watchlist({ go }) {
   );
 }
 
-function Analytics() {
+function Analytics({ go }) {
   const all = window.SUPPLIERS;
   const cats = ["Financial", "Operational", "Regulatory", "Promoter", "Cyber", "ESG", "Insolvency", "Market"];
   const counts = cats.map(c => ({ cat: c, n: all.reduce((acc, s) => acc + (s.signals || []).filter(x => x.type === c).length, 0) }));
@@ -550,6 +581,11 @@ function Analytics() {
         </div>
       </div>
       <div className="card" style={{ marginTop: 16 }}>
+        <h3>Risk vs spend matrix <span style={{ color: "var(--muted-2)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>· bubble size = tier · click to drill in</span></h3>
+        <RiskMatrix go={go} />
+        <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 8 }}>Top-right = high spend &amp; high risk: the suppliers that hurt most if they fail.</div>
+      </div>
+      <div className="card" style={{ marginTop: 16 }}>
         <h3>Business case (from CEO briefing)</h3>
         <div className="grid grid-3">
           <div><div style={{ color: "var(--muted)", fontSize: 11.5 }}>YEAR-1 BUILD</div><div className="big">₹50 lakh</div></div>
@@ -557,6 +593,58 @@ function Analytics() {
           <div><div style={{ color: "var(--muted)", fontSize: 11.5 }}>PAYBACK</div><div className="big">&lt; 4 mo</div></div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function Compare({ go }) {
+  const [picks, setPicks] = useState([]);
+  const add = id => setPicks(p => p.includes(id) || p.length >= 4 ? p : [...p, id]);
+  const remove = id => setPicks(p => p.filter(x => x !== id));
+  const chosen = picks.map(id => window.SUPPLIERS.find(s => s.id === id)).filter(Boolean);
+  const available = window.SUPPLIERS.filter(s => !picks.includes(s.id));
+  const rows = [
+    ["Risk score", s => <Pill score={s.score} />],
+    ["Δ (vs baseline)", s => <DeltaTag delta={s.delta} />],
+    ["Category", s => `${s.category} · ${s.sub}`],
+    ["Region / Tier", s => `${s.region} · T${s.tier}`],
+    ["Annual spend", s => fmtCr(s.spendCr)],
+    ["Hero SKUs", s => (s.skus || []).join(", ")],
+    ["Open signals", s => (s.signals || []).length],
+    ["Last incident", s => s.lastIncident || "—"],
+    ["Trend", s => <Sparkline data={s.history} color={zoneColor(zoneOf(s.score))} />],
+    ["Backups", s => (s.backups || []).length],
+    ["Recommendation", s => <span style={{ fontSize: 12.5 }}>{s.recommendation}</span>]
+  ];
+  return (
+    <div className="fade-in">
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="row-between" style={{ flexWrap: "wrap", gap: 10 }}>
+          <div style={{ color: "var(--muted)", fontSize: 13 }}>Select up to 4 suppliers to compare side by side.</div>
+          <select className="search" style={{ width: 260 }} value="" onChange={e => add(e.target.value)} aria-label="Add supplier to compare" disabled={picks.length >= 4}>
+            <option value="" disabled>{picks.length >= 4 ? "Max 4 selected" : "+ Add supplier…"}</option>
+            {available.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+      </div>
+      {chosen.length === 0
+        ? <div className="empty">Pick suppliers above to build a side-by-side comparison.</div>
+        : <div className="card" style={{ overflowX: "auto" }}>
+            <table className="suppliers" style={{ minWidth: 480 }}>
+              <thead><tr><th style={{ width: 150 }}></th>
+                {chosen.map(s => <th key={s.id}><div className="row-between"><span style={{ cursor: "pointer", color: "var(--text)" }} onClick={() => go("supplier", s.id)}>{s.name}</span>
+                  <span style={{ cursor: "pointer", color: "var(--muted)" }} onClick={() => remove(s.id)} title="Remove">✕</span></div></th>)}
+              </tr></thead>
+              <tbody>
+                {rows.map(([label, render]) => (
+                  <tr key={label} style={{ cursor: "default" }}>
+                    <td style={{ color: "var(--muted)", fontWeight: 600 }}>{label}</td>
+                    {chosen.map(s => <td key={s.id} style={{ verticalAlign: "top" }}>{render(s)}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>}
     </div>
   );
 }
@@ -644,6 +732,7 @@ function CommandPalette({ open, onClose, go }) {
       { kind: "page", label: "Suppliers", action: () => go("suppliers") },
       { kind: "page", label: "Alerts", action: () => go("alerts") },
       { kind: "page", label: "Watchlist", action: () => go("watchlist") },
+      { kind: "page", label: "Compare", action: () => go("compare") },
       { kind: "page", label: "Analytics", action: () => go("analytics") },
       { kind: "page", label: "Settings", action: () => go("settings") },
       { kind: "page", label: "About", action: () => go("about") }
@@ -709,6 +798,7 @@ const NAV = [
   { id: "suppliers", label: "Suppliers" },
   { id: "alerts", label: "Alerts" },
   { id: "watchlist", label: "Watchlist" },
+  { id: "compare", label: "Compare" },
   { id: "analytics", label: "Analytics" },
   { id: "settings", label: "Settings" },
   { id: "about", label: "About" }
@@ -720,6 +810,7 @@ const TITLES = {
   supplier: ["Supplier Detail", "Signals, score history and recommended actions."],
   alerts: ["Alerts & Signals", "Every signal detected across the supplier base."],
   watchlist: ["Watchlist", "Suppliers you're actively tracking."],
+  compare: ["Compare Suppliers", "Put up to 4 suppliers side by side."],
   analytics: ["Analytics", "Trends, spend at risk and business-case metrics."],
   settings: ["Settings", "Tune thresholds, live mode and preferences."],
   about: ["About", "How the early-warning system works."]
@@ -821,7 +912,8 @@ function App() {
             {route.page === "supplier" && <SupplierDetail id={route.arg} go={go} />}
             {route.page === "alerts" && <Alerts go={go} />}
             {route.page === "watchlist" && <Watchlist go={go} />}
-            {route.page === "analytics" && <Analytics />}
+            {route.page === "compare" && <Compare go={go} />}
+            {route.page === "analytics" && <Analytics go={go} />}
             {route.page === "settings" && <Settings />}
             {route.page === "about" && <About />}
             {!TITLES[route.page] && <div className="empty">Page not found. <a onClick={() => go("overview")} style={{ cursor: "pointer" }}>Go to Overview</a></div>}

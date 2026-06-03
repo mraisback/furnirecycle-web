@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Supplier Risk AI · PepsiCo India</title>
   <meta name="description" content="AI-powered early warning system that flags supplier distress 3-9 months before it hurts production." />
+  <meta name="theme-color" content="#0b1020" />
+  <meta property="og:title" content="Supplier Risk AI · PepsiCo India" />
+  <meta property="og:description" content="AI-powered supplier risk early warning dashboard." />
+  <meta property="og:type" content="website" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="assets/icon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -21,10 +27,29 @@
     try { var t = JSON.parse(localStorage.getItem("srisk.theme")); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}
   </script>
 
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.25.9/babel.min.js"></script>
   <script src="data/suppliers.js"></script>
   <script type="text/babel" data-presets="react" src="assets/app.js"></script>
+
+  <script>
+    // Register service worker for offline support (only over http/https, not file://).
+    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("sw.js").catch(function (e) { console.warn("SW registration failed", e); });
+      });
+    }
+    // Graceful fallback if CDN dependencies are blocked.
+    window.addEventListener("load", function () {
+      if (!window.React || !window.ReactDOM) {
+        document.getElementById("root").innerHTML =
+          '<div style="padding:40px;color:#9aa3c7;font-family:sans-serif;max-width:520px;margin:40px auto">' +
+          '<h2 style="color:#e6ebff">Couldn\'t load app dependencies</h2>' +
+          '<p>React/Babel are loaded from a CDN (unpkg.com). This network appears to block them. ' +
+          'Connect to a network that allows unpkg.com, or self-host the libraries.</p></div>';
+      }
+    });
+  </script>
 </body>
 </html>
