@@ -66,6 +66,11 @@ def load_master_wh(file_bytes: bytes) -> Tuple[Optional[pd.DataFrame], Optional[
         return None, str(e)
 
 
+@st.cache_data(show_spinner=False)
+def load_ost(file_bytes: bytes) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
+    return _read_first_sheet(file_bytes, ["Sheet1", "OST_Report", "OST", "Sheet 1"])
+
+
 def get_transaction_types(df: Optional[pd.DataFrame]) -> list:
     if df is None:
         return []

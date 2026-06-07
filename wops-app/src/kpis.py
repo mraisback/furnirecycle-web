@@ -98,6 +98,76 @@ def compute_rs_per_case(
     return total_rent / cases_dispatched
 
 
+def compute_cases_per_manhour_unload(
+    receiving,
+    unload_map: Dict[str, float],
+    zone_sel: str,
+    plant_sel: str,
+    fixed_manpower: int = 50,
+) -> float:
+    """Cases Received ÷ Unloading Labour per plant (from Master_WH).
+
+    Falls back to ``fixed_manpower`` when no unload-labour data is available.
+    Returns 0.0 when no receipts exist.
+    """
+    cases_received = _safe_sum(receiving, "Total_Cases_Received")
+    if cases_received == 0:
+        return 0.0
+    if not unload_map or receiving is None or receiving.empty:
+        return cases_received / max(fixed_manpower, 1)
+
+    if plant_sel != "All Plants" and receiving is not None and "Plant" in receiving.columns:
+        labour = unload_map.get(str(plant_sel), fixed_manpower)
+    else:
+        plants = (
+            receiving["Plant"].dropna().astype(str).unique()
+            if receiving is not None and "Plant" in receiving.columns else []
+        )
+        labour = sum(unload_map.get(p, fixed_manpower) for p in plants) if len(plants) > 0 else fixed_manpower
+
+    return cases_received / max(labour, 1)
+
+
+def compute_otif_kpis(ost) -> dict:
+    """OTIF % and Order Service Time % from the OST_Report extract.
+
+    OTIF:  Status == 'Fully Delivered' AND Time_Bucket == '<24'
+    OST:   Time_Bucket == '<24'  (regardless of status)
+    Both are divided by total rows (all order-plant lines) as denominator.
+    """
+    result = {
+        "otif_pct":     0.0,
+        "ost_pct":      0.0,
+        "total_orders": 0,
+        "otif_orders":  0,
+        "ost_orders":   0,
+        "available":    False,
+    }
+    if ost is None or ost.empty:
+        return result
+
+    total = len(ost)
+    if total == 0:
+        return result
+
+    result["total_orders"] = total
+    result["available"] = True
+
+    if "Time_Bucket" in ost.columns:
+        ost_mask = ost["Time_Bucket"].str.strip() == "<24"
+        result["ost_orders"] = int(ost_mask.sum())
+        result["ost_pct"] = result["ost_orders"] / total * 100
+
+    if "Status" in ost.columns and "Time_Bucket" in ost.columns:
+        otif_mask = (
+            ost["Status"].str.strip().str.upper() == "FULLY DELIVERED"
+        ) & (ost["Time_Bucket"].str.strip() == "<24")
+        result["otif_orders"] = int(otif_mask.sum())
+        result["otif_pct"] = result["otif_orders"] / total * 100
+
+    return result
+
+
 def compute_expiry_kpis(inventory) -> dict:
     result = {
         "expired_value": 0.0,
@@ -200,6 +270,7 @@ def compute_rlm_table(
     zone_sel: str,
     fixed_manpower: int = 50,
     master_maps: Optional[Dict[str, Dict[str, float]]] = None,
+    ost: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Per-plant KPI breakdown for the RLM Zone Comparison view.
 
@@ -219,6 +290,7 @@ def compute_rlm_table(
     r   = _zone_filter(returns)
     rc  = _zone_filter(receiving)
     inv = _zone_filter(inventory)
+    ost_f = _zone_filter(ost)
 
     def _group(df, col) -> pd.Series:
         if df is None or df.empty or col not in df.columns:
@@ -241,11 +313,12 @@ def compute_rlm_table(
         return pd.DataFrame()
 
     # Pull master data maps
-    maps         = master_maps or {}
-    rent_map     = maps.get("rent",     {})
-    cap_map      = maps.get("capacity", {})
-    area_map     = maps.get("area",     {})
-    labour_map   = maps.get("labour",   {})
+    maps             = master_maps or {}
+    rent_map         = maps.get("rent",          {})
+    cap_map          = maps.get("capacity",       {})
+    area_map         = maps.get("area",           {})
+    labour_map       = maps.get("labour",         {})
+    unload_map       = maps.get("unload_labour",  {})
 
     idx = all_plants
     acc = pd.DataFrame(index=idx)
@@ -279,6 +352,14 @@ def compute_rlm_table(
     )
     acc["Cases_Per_MH"] = (acc["Cases_Dispatched"] / manpower_series.clip(lower=1)).round(1)
 
+    # Cases Unloaded per Manhour (inbound receipts ÷ unloading labour)
+    unload_series = pd.Series(
+        {p: unload_map.get(str(p), fixed_manpower) for p in idx}
+    )
+    acc["Cases_Per_MH_Unload"] = (
+        cases_received.reindex(idx, fill_value=0) / unload_series.clip(lower=1)
+    ).round(1)
+
     # ── Master_WH derived KPIs — NaN when data absent ─────────────────────────
     def _series_from_map(m: dict) -> pd.Series:
         return pd.Series({p: m.get(str(p), np.nan) for p in idx})
@@ -290,6 +371,21 @@ def compute_rlm_table(
     acc["Rs_Per_Case"]    = (rent_s / _dispatched_pos).round(2)
     acc["Dock_Util_%"]    = (acc["Cases_Dispatched"] / cap_s.replace(0, np.nan) * 100).round(1)
     acc["Rent_Per_Sqft"]  = (rent_s / area_s.replace(0, np.nan)).round(2)
+
+    # ── Per-plant OTIF and OST (only when OST file uploaded) ─────────────────────
+    if ost_f is not None and not ost_f.empty and "Plant" in ost_f.columns:
+        tot_s = ost_f.groupby("Plant").size()
+        tot_r = tot_s.reindex(idx, fill_value=0).replace(0, np.nan)
+        if "Time_Bucket" in ost_f.columns:
+            ost_mask  = ost_f["Time_Bucket"].str.strip() == "<24"
+            ost_cnt   = ost_f[ost_mask].groupby("Plant").size()
+            acc["OST_%"] = (ost_cnt.reindex(idx, fill_value=0) / tot_r * 100).round(1)
+        if "Status" in ost_f.columns and "Time_Bucket" in ost_f.columns:
+            otif_mask = (
+                ost_f["Status"].str.strip().str.upper() == "FULLY DELIVERED"
+            ) & (ost_f["Time_Bucket"].str.strip() == "<24")
+            otif_cnt  = ost_f[otif_mask].groupby("Plant").size()
+            acc["OTIF_%"] = (otif_cnt.reindex(idx, fill_value=0) / tot_r * 100).round(1)
 
     # ── Dispatch rank (only among plants with non-zero dispatches) ─────────────
     acc["Dispatch_Rank"] = (

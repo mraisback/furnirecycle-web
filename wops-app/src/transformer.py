@@ -121,6 +121,33 @@ def _norm_plant(val) -> str:
     return s
 
 
+_OST_PLANT_COLS  = ["PLANT", "Plant", "Source Plant", "Warehouse", "Warehouse Code"]
+_OST_STATUS_COLS = ["Status", "Order Status", "Delivery Status", "OTIF Status",
+                    "Delivery_Status", "Order_Status"]
+_OST_BUCKET_COLS = ["Order Time Bucket", "Time Bucket", "OST_Bucket", "Order Bucket",
+                    "OST Bucket", "Time_Bucket"]
+_OST_ORDER_COLS  = ["Order No", "Order_No", "Invoice No", "Invoice no", "Doc. Number",
+                    "Document Number", "Sales Order"]
+
+
+def _build_ost(df: pd.DataFrame) -> pd.DataFrame:
+    """Build Order Service Time frame from SAP OST_Report extract."""
+    if df.empty:
+        return pd.DataFrame()
+
+    plant_col  = _sc(df, _OST_PLANT_COLS)
+    status_col = _sc(df, _OST_STATUS_COLS)
+    bucket_col = _sc(df, _OST_BUCKET_COLS)
+    order_col  = _sc(df, _OST_ORDER_COLS)
+
+    out = pd.DataFrame()
+    out["Plant"]       = _norm_plant_series(df[plant_col])                                   if plant_col  else "Unknown"
+    out["Status"]      = df[status_col].fillna("").astype(str).str.strip()                   if status_col else ""
+    out["Time_Bucket"] = df[bucket_col].fillna("").astype(str).str.strip()                   if bucket_col else ""
+    out["Order_No"]    = df[order_col].values                                                if order_col  else np.nan
+    return out.reset_index(drop=True)
+
+
 @st.cache_data(show_spinner=False)
 def build_all_dataframes(
     zsd_bytes: bytes,
@@ -130,12 +157,13 @@ def build_all_dataframes(
     credit_types: tuple,
     challan_types: tuple,
     master_wh_bytes: Optional[bytes] = None,
+    ost_bytes: Optional[bytes] = None,
 ) -> Dict[str, Optional[pd.DataFrame]]:
-    from src.data_loader import load_zsd, load_nysd, load_transport, load_master_wh
+    from src.data_loader import load_zsd, load_nysd, load_transport, load_master_wh, load_ost
 
     result = {k: None for k in [
         "customer_orders", "order_despatch", "returns",
-        "receiving", "inventory", "inventory_accuracy", "transport"
+        "receiving", "inventory", "inventory_accuracy", "transport", "ost"
     ]}
 
     zone_map = {}
@@ -177,6 +205,11 @@ def build_all_dataframes(
 
     if raw_transport is not None:
         result["transport"] = _build_transport(raw_transport)
+
+    if ost_bytes:
+        raw_ost, _ = load_ost(ost_bytes)
+        if raw_ost is not None:
+            result["ost"] = _build_ost(raw_ost)
 
     for key, df in result.items():
         if df is not None and not df.empty and "Plant" in df.columns:

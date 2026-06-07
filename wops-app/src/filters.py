@@ -189,7 +189,7 @@ def build_master_wh_numeric_maps(
     Each value is {plant_code_str: float}.
     """
     empty: Dict[str, Dict[str, float]] = {
-        "rent": {}, "capacity": {}, "area": {}, "labour": {}
+        "rent": {}, "capacity": {}, "area": {}, "labour": {}, "unload_labour": {}
     }
     if master_df is None or master_df.empty:
         return empty
@@ -219,18 +219,23 @@ def build_master_wh_numeric_maps(
     lab_col  = _find(master_df,
         "Labour", "Manpower", "Fixed Manpower", "No. of Manpower",
         "Headcount", "Labour Count", "Labour (Nos)")
+    unload_lab_col = _find(master_df,
+        "Unloading Labour", "Unloading Manpower", "Unload Labour",
+        "Labour (Unloading)", "Unloading Labour (Nos)", "Unloading_Labour",
+        "Unload_Labour", "Unloading labor")
 
     if not code_col:
         return empty
 
     maps: Dict[str, Dict[str, float]] = {
-        "rent": {}, "capacity": {}, "area": {}, "labour": {}
+        "rent": {}, "capacity": {}, "area": {}, "labour": {}, "unload_labour": {}
     }
     col_mapping = [
-        ("rent",     rent_col),
-        ("capacity", cap_col),
-        ("area",     area_col),
-        ("labour",   lab_col),
+        ("rent",          rent_col),
+        ("capacity",      cap_col),
+        ("area",          area_col),
+        ("labour",        lab_col),
+        ("unload_labour", unload_lab_col),
     ]
 
     for _, row in master_df.iterrows():

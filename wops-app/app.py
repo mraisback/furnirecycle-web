@@ -12,7 +12,8 @@ from src.transformer import build_all_dataframes
 from src.filters import apply_filter, build_master_wh_numeric_maps
 from src.kpis import (
     compute_primary_kpis, compute_receiving_kpi, compute_inventory_kpis,
-    compute_rs_per_case, compute_expiry_kpis, compute_returns_by_category,
+    compute_rs_per_case, compute_cases_per_manhour_unload, compute_otif_kpis,
+    compute_expiry_kpis, compute_returns_by_category,
     compute_channel_split, compute_inventory_health_table,
     compute_data_freshness, compute_rlm_table,
 )
@@ -32,6 +33,7 @@ with st.sidebar:
     nysd_file      = st.file_uploader("FILE 2 — nysd_css.xlsx",              type=["xlsx"], key="nysd")
     transport_file = st.file_uploader("FILE 3 — Transport.xlsx (optional)",  type=["xlsx"], key="tp")
     master_file    = st.file_uploader("FILE 4 — Master_WH.xlsx (optional)\nEnables Zone mapping + Rent/Labour KPIs", type=["xlsx"], key="mwh")
+    ost_file       = st.file_uploader("FILE 5 — OST_Report.xlsx (optional)\nEnables OTIF % and Order Service Time %", type=["xlsx"], key="ost")
 
     st.markdown("---")
 
@@ -44,6 +46,7 @@ with st.sidebar:
     nysd_bytes = nysd_file.read()
     tp_bytes   = transport_file.read() if transport_file else None
     mwh_bytes  = master_file.read()    if master_file    else None
+    ost_bytes  = ost_file.read()       if ost_file       else None
 
     raw_zsd, load_err = load_zsd(zsd_bytes)
     if load_err:
@@ -99,7 +102,7 @@ with st.spinner("Processing data..."):
     dfs = build_all_dataframes(
         zsd_bytes, nysd_bytes, tp_bytes,
         tuple(invoice_types), tuple(credit_types), tuple(challan_types),
-        mwh_bytes,
+        mwh_bytes, ost_bytes,
     )
 
 orders       = dfs["customer_orders"]
@@ -109,6 +112,7 @@ receiving    = dfs["receiving"]
 inventory    = dfs["inventory"]
 inv_accuracy = dfs["inventory_accuracy"]
 transport    = dfs["transport"]
+ost          = dfs["ost"]
 
 # Build plant display map and master numeric maps
 from src.filters import build_zone_map_from_master, PLANT_NAME_MAP, _norm_plant_key
@@ -199,6 +203,7 @@ f_receiving = flt(receiving)
 f_inventory = flt(inventory)
 f_inv_acc   = flt(inv_accuracy)
 f_transport = flt(transport)
+f_ost       = flt(ost)
 
 # Date-range filter on the transactional frames (inventory is a point-in-time
 # snapshot, so it is intentionally excluded).
@@ -276,17 +281,39 @@ with tab1:
     sc_disp  = "No dispatch" if inv_kpis["stock_cover_na"] else f"{inv_kpis['stock_cover']:.1f}"
     sc_sub   = "no despatch data" if inv_kpis["stock_cover_na"] else "days of forward cover"
 
+    unload_mph = compute_cases_per_manhour_unload(
+        f_receiving, master_maps.get("unload_labour", {}), zone_sel, plant_sel, fixed_manpower
+    )
+    otif_kpis  = compute_otif_kpis(f_ost)
+
     rs_case   = compute_rs_per_case(f_despatch, master_maps.get("rent", {}), zone_sel, plant_sel)
     rs_disp   = fmt_currency(rs_case) if rs_case is not None else "—"
     rs_sub    = "rent ÷ cases dispatched" if rs_case is not None else "upload Master_WH with Rent column"
 
+    # Row: warehouse ops metrics (5 cols)
     inv_cols = st.columns(5)
     for col, (title, val, sub, border, vc) in zip(inv_cols, [
-        ("TOTAL INVENTORY VALUE",  fmt_currency(inv_kpis["total_value"]),   "month-end stock",               "#E67E22", "#FFFFFF"),
-        ("STOCK COVER (DAYS)",     sc_disp,                                 sc_sub,                          "#E67E22", "#FFFFFF"),
-        ("CASES LOADED / MANHOUR", f"{inv_kpis['cases_per_manhour']:.1f}", f"based on {fixed_manpower} mp", "#E67E22", "#FFFFFF"),
-        ("MANPOWER PER ORDER",     f"{inv_kpis['manpower_per_order']:.2f}","fixed manpower ÷ orders",        "#E67E22", "#FFFFFF"),
-        ("Rs/CASE",                rs_disp,                                 rs_sub,                          "#8E44AD", "#FFFFFF"),
+        ("TOTAL INVENTORY VALUE",    fmt_currency(inv_kpis["total_value"]),   "month-end stock",               "#E67E22", "#FFFFFF"),
+        ("STOCK COVER (DAYS)",       sc_disp,                                 sc_sub,                          "#E67E22", "#FFFFFF"),
+        ("CASES LOADED / MANHOUR",   f"{inv_kpis['cases_per_manhour']:.1f}", f"based on {fixed_manpower} mp", "#E67E22", "#FFFFFF"),
+        ("CASES UNLOADED / MANHOUR", f"{unload_mph:.1f}",                    "inbound ÷ unloading labour",    "#2980B9", "#FFFFFF"),
+        ("Rs/CASE",                  rs_disp,                                 rs_sub,                          "#8E44AD", "#FFFFFF"),
+    ]):
+        with col:
+            st.markdown(kpi_card(title, val, sub, border, vc), unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Row: service level (OTIF + OST + manpower per order)
+    _otif_disp = f"{otif_kpis['otif_pct']:.1f}%" if otif_kpis["available"] else "—"
+    _otif_sub  = f"{otif_kpis['otif_orders']:,} of {otif_kpis['total_orders']:,} orders" if otif_kpis["available"] else "upload OST_Report (FILE 5)"
+    _ost_disp  = f"{otif_kpis['ost_pct']:.1f}%"  if otif_kpis["available"] else "—"
+    _ost_sub   = "order→dispatch < 24h" if otif_kpis["available"] else "upload OST_Report (FILE 5)"
+    svc_cols = st.columns(3)
+    for col, (title, val, sub, border, vc) in zip(svc_cols, [
+        ("OTIF %",              _otif_disp,                               _otif_sub,                   "#27AE60", "#27AE60" if otif_kpis["available"] else "#FFFFFF"),
+        ("ORDER SERVICE TIME %",_ost_disp,                                _ost_sub,                    "#1565C0", "#1565C0" if otif_kpis["available"] else "#FFFFFF"),
+        ("MANPOWER PER ORDER",  f"{inv_kpis['manpower_per_order']:.2f}", "fixed manpower ÷ orders",   "#E67E22", "#FFFFFF"),
     ]):
         with col:
             st.markdown(kpi_card(title, val, sub, border, vc), unsafe_allow_html=True)
@@ -370,6 +397,7 @@ with tab2:
         zone_sel=rlm_zone,
         fixed_manpower=fixed_manpower,
         master_maps=master_maps,
+        ost=ost,
     )
 
     if rlm_df.empty:
@@ -432,8 +460,8 @@ with tab2:
             "Plant", "Warehouse", "Cases_Ordered", "Cases_Dispatched",
             "Fill_Rate_%", "Cases_Received", "Returned_Cases", "Return_Rate_%",
             "Inv_Value_INR", "Stock_Cover_Days", "Rs_Per_Case",
-            "Dock_Util_%", "Rent_Per_Sqft", "Cases_Per_MH",
-            "Avg_Order_Size", "Dispatch_Rank",
+            "Dock_Util_%", "Rent_Per_Sqft", "Cases_Per_MH", "Cases_Per_MH_Unload",
+            "OTIF_%", "OST_%", "Avg_Order_Size", "Dispatch_Rank",
         ]
         display_cols = [c for c in display_cols if c in rlm_df.columns]
         disp_num = rlm_df[display_cols].copy()
@@ -449,20 +477,23 @@ with tab2:
         def _rank(v):
             return "—" if not pd.notna(v) else f"{int(v)}"
         fmt_map = {
-            "Cases_Ordered":    fmt_indian,
-            "Cases_Dispatched": fmt_indian,
-            "Cases_Received":   fmt_indian,
-            "Returned_Cases":   fmt_indian,
-            "Inv_Value_INR":    fmt_currency,
-            "Fill_Rate_%":      _pct,
-            "Return_Rate_%":    _pct,
-            "Dock_Util_%":      _pct,
-            "Rs_Per_Case":      _rs,
-            "Rent_Per_Sqft":    _rs,
-            "Stock_Cover_Days": _f1,
-            "Cases_Per_MH":     _f1,
-            "Avg_Order_Size":   _f1,
-            "Dispatch_Rank":    _rank,
+            "Cases_Ordered":      fmt_indian,
+            "Cases_Dispatched":   fmt_indian,
+            "Cases_Received":     fmt_indian,
+            "Returned_Cases":     fmt_indian,
+            "Inv_Value_INR":      fmt_currency,
+            "Fill_Rate_%":        _pct,
+            "Return_Rate_%":      _pct,
+            "Dock_Util_%":        _pct,
+            "OTIF_%":             _pct,
+            "OST_%":              _pct,
+            "Rs_Per_Case":        _rs,
+            "Rent_Per_Sqft":      _rs,
+            "Stock_Cover_Days":   _f1,
+            "Cases_Per_MH":       _f1,
+            "Cases_Per_MH_Unload": _f1,
+            "Avg_Order_Size":     _f1,
+            "Dispatch_Rank":      _rank,
         }
         fmt_map = {k: v for k, v in fmt_map.items() if k in disp_num.columns}
 
@@ -474,6 +505,8 @@ with tab2:
                 return [f"color: {fill_rate_color(v)}" if pd.notna(v) else "" for v in col]
             if name == "Return_Rate_%":
                 return [f"color: {rate_color(v)}" if pd.notna(v) else "" for v in col]
+            if name in ("OTIF_%", "OST_%"):
+                return [f"color: {fill_rate_color(v)}" if pd.notna(v) else "" for v in col]
             if name == "Dispatch_Rank":
                 return ["color: #27AE60; font-weight: 700"
                         if (pd.notna(v) and v == 1) else "" for v in col]
