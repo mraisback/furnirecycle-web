@@ -1,77 +1,138 @@
 GLOBAL_CSS = """
 <style>
-/* Hide default streamlit header padding */
-.block-container { padding-top: 1rem; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-/* KPI card base */
-.kpi-card {
-    background: #111D2E;
-    padding: 12px;
-    border-radius: 4px;
+/* ── Base typography ─────────────────────────────────────────── */
+html, body, [class*="css"], .stMarkdown, .stApp {
+    font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+.block-container { padding-top: 1.2rem; padding-bottom: 2rem; max-width: 1500px; }
+
+/* ── App hero header ─────────────────────────────────────────── */
+.wops-header {
+    background: linear-gradient(120deg, #0F2440 0%, #1565C0 55%, #1B7BD6 100%);
+    border-radius: 14px;
+    padding: 18px 26px;
+    margin-bottom: 18px;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.35);
+    display: flex; align-items: center; gap: 16px;
+}
+.wops-header-icon { font-size: 38px; line-height: 1; }
+.wops-header-text h1 {
+    color: #FFFFFF; font-size: 24px; font-weight: 800;
+    margin: 0; letter-spacing: 0.3px;
+}
+.wops-header-text p {
+    color: #CFE2F7; font-size: 13px; margin: 2px 0 0; font-weight: 500;
+}
+
+/* ── KPI cards ───────────────────────────────────────────────── */
+.wops-kpi {
+    background: linear-gradient(180deg, #14233A 0%, #0F1B2E 100%);
+    border-radius: 12px;
+    padding: 16px 14px 14px;
     text-align: center;
     height: 100%;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.30);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    position: relative;
+    overflow: hidden;
 }
-.kpi-title {
-    color: #8AAAC8;
-    font-size: 11px;
-    margin: 0;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
+.wops-kpi:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.45);
 }
-.kpi-value {
-    font-size: 28px;
-    font-weight: 700;
-    margin: 4px 0;
+.wops-kpi-icon {
+    font-size: 18px; opacity: 0.85; margin-bottom: 2px; line-height: 1;
 }
-.kpi-subtitle {
-    color: #4A6070;
-    font-size: 10px;
-    margin: 0;
+.wops-kpi-title {
+    color: #8AAAC8; font-size: 11px; margin: 0; font-weight: 600;
+    letter-spacing: 0.6px; text-transform: uppercase;
 }
+.wops-kpi-value {
+    font-size: 27px; font-weight: 800; margin: 5px 0 3px; line-height: 1.1;
+}
+.wops-kpi-sub { color: #5B7790; font-size: 10.5px; margin: 0; }
 
-/* Selector bar */
+/* ── Selector bar ────────────────────────────────────────────── */
 .selector-bar {
-    background: #1565C0;
-    padding: 10px 20px;
-    border-radius: 4px;
-    color: white;
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 12px;
+    background: linear-gradient(90deg, #1565C0 0%, #1B7BD6 100%);
+    padding: 10px 20px; border-radius: 10px; color: white;
+    font-size: 14px; font-weight: 600; margin-bottom: 14px;
+    box-shadow: 0 3px 12px rgba(21,101,192,0.30);
 }
 
-/* Error table styling */
+/* ── Error severity ──────────────────────────────────────────── */
 .error-high   { color: #E74C3C; font-weight: 700; }
 .error-medium { color: #E67E22; font-weight: 700; }
 .error-low    { color: #F1C40F; font-weight: 700; }
 
-/* Tab spacing */
-.stTabs [data-baseweb="tab"] { font-size: 14px; padding: 8px 20px; }
+/* ── Tabs ────────────────────────────────────────────────────── */
+.stTabs [data-baseweb="tab-list"] { gap: 4px; }
+.stTabs [data-baseweb="tab"] {
+    font-size: 14px; font-weight: 600; padding: 9px 18px;
+    border-radius: 9px 9px 0 0; color: #8AAAC8;
+}
+.stTabs [aria-selected="true"] {
+    background: #14233A; color: #FFFFFF;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────── */
+section[data-testid="stSidebar"] {
+    background: #0B1626; border-right: 1px solid #1E3A5F;
+}
+section[data-testid="stSidebar"] .stFileUploader label { font-weight: 600; }
+
+/* ── Dataframes & buttons ────────────────────────────────────── */
+[data-testid="stDataFrame"] { border-radius: 10px; overflow: hidden; }
+.stDownloadButton button, .stButton button {
+    border-radius: 8px; font-weight: 600; border: 1px solid #1E3A5F;
+    transition: all 0.15s ease;
+}
+.stDownloadButton button:hover, .stButton button:hover {
+    border-color: #1565C0; box-shadow: 0 0 0 2px rgba(21,101,192,0.25);
+}
+
+/* ── Custom scrollbar ────────────────────────────────────────── */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: #0D1B2A; }
+::-webkit-scrollbar-thumb { background: #1E3A5F; border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #2C5179; }
 </style>
 """
 
 
-def kpi_card(title: str, value: str, subtitle: str = "",
-             border_color: str = "#1565C0", value_color: str = "#FFFFFF") -> str:
+def app_header(subtitle: str = "Warehouse Operations Performance System") -> str:
+    """Hero banner shown at the top of the main content area."""
     return f"""
-<div style="background:#111D2E; border-top:3px solid {border_color};
-            padding:12px; border-radius:4px; text-align:center; height:100%">
-  <p style="color:#8AAAC8; font-size:11px; margin:0; font-weight:600;
-            letter-spacing:0.5px; text-transform:uppercase">{title}</p>
-  <p style="color:{value_color}; font-size:28px; font-weight:700;
-            margin:4px 0">{value}</p>
-  <p style="color:#4A6070; font-size:10px; margin:0">{subtitle}</p>
+<div class="wops-header">
+  <div class="wops-header-icon">📦</div>
+  <div class="wops-header-text">
+    <h1>WOPS Intelligence Dashboard</h1>
+    <p>{subtitle}</p>
+  </div>
+</div>"""
+
+
+def kpi_card(title: str, value: str, subtitle: str = "",
+             border_color: str = "#1565C0", value_color: str = "#FFFFFF",
+             icon: str = "") -> str:
+    icon_html = f'<div class="wops-kpi-icon">{icon}</div>' if icon else ""
+    return f"""
+<div class="wops-kpi" style="border-top:3px solid {border_color}">
+  {icon_html}
+  <p class="wops-kpi-title">{title}</p>
+  <p class="wops-kpi-value" style="color:{value_color}">{value}</p>
+  <p class="wops-kpi-sub">{subtitle}</p>
 </div>"""
 
 
 def selector_bar(plant: str, zone: str) -> str:
     return f"""
-<div style="background:#1565C0; padding:10px 20px; border-radius:4px;
-            color:white; font-size:14px; font-weight:600; margin-bottom:12px">
-  Plant: <span style="font-weight:400">{plant}</span>
+<div class="selector-bar">
+  📍 Plant: <span style="font-weight:400">{plant}</span>
   &nbsp;&nbsp;|&nbsp;&nbsp;
-  Zone: <span style="font-weight:400">{zone}</span>
+  🗺️ Zone: <span style="font-weight:400">{zone}</span>
 </div>"""
 
 

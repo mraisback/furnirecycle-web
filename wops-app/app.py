@@ -4,7 +4,7 @@ import pandas as pd
 st.set_page_config(layout="wide", page_title="WOPS Intelligence Dashboard", page_icon="📦")
 
 from src.styles import (
-    GLOBAL_CSS, kpi_card, selector_bar,
+    GLOBAL_CSS, app_header, kpi_card, selector_bar,
     fmt_currency, fmt_indian, rate_color, accuracy_color, fill_rate_color,
 )
 from src.data_loader import load_zsd, get_transaction_types
@@ -22,6 +22,7 @@ from src.error_detection import compute_error_log, get_missing_batch_detail, get
 from src import analytics, panels
 
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+st.markdown(app_header(), unsafe_allow_html=True)
 
 
 # ── SIDEBAR ──────────────────────────────────────────────────────────────────
@@ -29,16 +30,28 @@ with st.sidebar:
     st.markdown("## 📦 WOPS Intelligence")
     st.markdown("---")
 
-    zsd_file       = st.file_uploader("FILE 1 — zsd_salefl.xlsx",           type=["xlsx"], key="zsd")
-    nysd_file      = st.file_uploader("FILE 2 — nysd_css.xlsx",              type=["xlsx"], key="nysd")
-    transport_file = st.file_uploader("FILE 3 — Transport.xlsx (optional)",  type=["xlsx"], key="tp")
-    master_file    = st.file_uploader("FILE 4 — Master_WH.xlsx (optional)\nEnables Zone mapping + Rent/Labour KPIs", type=["xlsx"], key="mwh")
-    ost_file       = st.file_uploader("FILE 5 — OST_Report.xlsx (optional)\nEnables OTIF % and Order Service Time %", type=["xlsx"], key="ost")
+    st.markdown("##### 📂 Required data")
+    zsd_file       = st.file_uploader("FILE 1 — zsd_salefl.xlsx",  type=["xlsx"], key="zsd")
+    nysd_file      = st.file_uploader("FILE 2 — nysd_css.xlsx",    type=["xlsx"], key="nysd")
+
+    with st.expander("➕ Optional data sources (3–5)", expanded=False):
+        st.caption("Unlock extra KPIs — transport analytics, zone/labour mapping, and service-level metrics.")
+        transport_file = st.file_uploader("FILE 3 — Transport.xlsx\nTransport & vendor analytics", type=["xlsx"], key="tp")
+        master_file    = st.file_uploader("FILE 4 — Master_WH.xlsx\nZone mapping + Rent/Labour KPIs", type=["xlsx"], key="mwh")
+        ost_file       = st.file_uploader("FILE 5 — OST_Report.xlsx\nOTIF % and Order Service Time %", type=["xlsx"], key="ost")
+
+    # Live status summary of what's loaded
+    _loaded = [n for n, f in [
+        ("Sales", zsd_file), ("Stock", nysd_file), ("Transport", transport_file),
+        ("Master_WH", master_file), ("OST", ost_file),
+    ] if f]
+    if _loaded:
+        st.success("✅ Loaded: " + ", ".join(_loaded))
 
     st.markdown("---")
 
     if not (zsd_file and nysd_file):
-        st.info("Upload files 1 & 2 to begin.")
+        st.info("⬆️ Upload **FILE 1** and **FILE 2** to begin.")
         st.stop()
 
     # Read ALL file bytes exactly once — UploadedFile pointer exhausts after first .read()
@@ -250,29 +263,31 @@ with tab1:
     rr             = primary["return_rate"]
     fr             = primary["fill_rate"]
 
+    st.markdown("##### 📦 Volume & Flow")
     r1 = st.columns(4)
-    for col, (title, val, sub, border, vc) in zip(r1, [
-        ("CASES ORDERED",    fmt_indian(primary["total_ordered"]),    "from customer orders",   "#1565C0", "#FFFFFF"),
-        ("CASES DISPATCHED", fmt_indian(primary["cases_dispatched"]), "shipped to customers",   "#27AE60", "#FFFFFF"),
-        ("FILL RATE %",      f"{fr:.1f}%",                           "dispatched ÷ ordered",   "#27AE60", fill_rate_color(fr)),
-        ("CASES RECEIVED",   fmt_indian(cases_received),             "inbound to warehouse",   "#2980B9", "#FFFFFF"),
+    for col, (title, val, sub, border, vc, icon) in zip(r1, [
+        ("CASES ORDERED",    fmt_indian(primary["total_ordered"]),    "from customer orders",   "#1565C0", "#FFFFFF", "🛒"),
+        ("CASES DISPATCHED", fmt_indian(primary["cases_dispatched"]), "shipped to customers",   "#27AE60", "#FFFFFF", "🚚"),
+        ("FILL RATE %",      f"{fr:.1f}%",                           "dispatched ÷ ordered",   "#27AE60", fill_rate_color(fr), "🎯"),
+        ("CASES RECEIVED",   fmt_indian(cases_received),             "inbound to warehouse",   "#2980B9", "#FFFFFF", "📥"),
     ]):
         with col:
-            st.markdown(kpi_card(title, val, sub, border, vc), unsafe_allow_html=True)
+            st.markdown(kpi_card(title, val, sub, border, vc, icon), unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── PRIMARY KPIs — row 2: quality / service ───────────
     avg_sz = primary["avg_order_size"]
+    st.markdown("##### ↩️ Quality & Orders")
     r2 = st.columns(4)
-    for col, (title, val, sub, border, vc) in zip(r2, [
-        ("RETURN RATE %",      f"{rr:.1f}%",                           "returns ÷ dispatched",   "#C0392B", rate_color(rr)),
-        ("TOTAL RETURNS",      fmt_indian(primary["total_returns"]),   "returned from customers","#C0392B", "#FFFFFF"),
-        ("COUNT OF ORDERS",    fmt_indian(primary["count_orders"]),    "unique invoices",         "#1565C0", "#FFFFFF"),
-        ("AVG ORDER SIZE",     f"{avg_sz:.1f}",                        "cases per order",         "#1565C0", "#FFFFFF"),
+    for col, (title, val, sub, border, vc, icon) in zip(r2, [
+        ("RETURN RATE %",      f"{rr:.1f}%",                           "returns ÷ dispatched",   "#C0392B", rate_color(rr), "📉"),
+        ("TOTAL RETURNS",      fmt_indian(primary["total_returns"]),   "returned from customers","#C0392B", "#FFFFFF", "↩️"),
+        ("COUNT OF ORDERS",    fmt_indian(primary["count_orders"]),    "unique invoices",         "#1565C0", "#FFFFFF", "🧾"),
+        ("AVG ORDER SIZE",     f"{avg_sz:.1f}",                        "cases per order",         "#1565C0", "#FFFFFF", "📐"),
     ]):
         with col:
-            st.markdown(kpi_card(title, val, sub, border, vc), unsafe_allow_html=True)
+            st.markdown(kpi_card(title, val, sub, border, vc, icon), unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -291,46 +306,49 @@ with tab1:
     rs_sub    = "rent ÷ cases dispatched" if rs_case is not None else "upload Master_WH with Rent column"
 
     # Row: warehouse ops metrics (5 cols)
+    st.markdown("##### 💰 Inventory & Cost")
     inv_cols = st.columns(5)
-    for col, (title, val, sub, border, vc) in zip(inv_cols, [
-        ("TOTAL INVENTORY VALUE",    fmt_currency(inv_kpis["total_value"]),   "month-end stock",               "#E67E22", "#FFFFFF"),
-        ("STOCK COVER (DAYS)",       sc_disp,                                 sc_sub,                          "#E67E22", "#FFFFFF"),
-        ("CASES LOADED / MANHOUR",   f"{inv_kpis['cases_per_manhour']:.1f}", f"based on {fixed_manpower} mp", "#E67E22", "#FFFFFF"),
-        ("CASES UNLOADED / MANHOUR", f"{unload_mph:.1f}",                    "inbound ÷ unloading labour",    "#2980B9", "#FFFFFF"),
-        ("Rs/CASE",                  rs_disp,                                 rs_sub,                          "#8E44AD", "#FFFFFF"),
+    for col, (title, val, sub, border, vc, icon) in zip(inv_cols, [
+        ("TOTAL INVENTORY VALUE",    fmt_currency(inv_kpis["total_value"]),   "month-end stock",               "#E67E22", "#FFFFFF", "💰"),
+        ("STOCK COVER (DAYS)",       sc_disp,                                 sc_sub,                          "#E67E22", "#FFFFFF", "📆"),
+        ("CASES LOADED / MANHOUR",   f"{inv_kpis['cases_per_manhour']:.1f}", f"based on {fixed_manpower} mp", "#E67E22", "#FFFFFF", "📤"),
+        ("CASES UNLOADED / MANHOUR", f"{unload_mph:.1f}",                    "inbound ÷ unloading labour",    "#2980B9", "#FFFFFF", "📥"),
+        ("Rs/CASE",                  rs_disp,                                 rs_sub,                          "#8E44AD", "#FFFFFF", "🏷️"),
     ]):
         with col:
-            st.markdown(kpi_card(title, val, sub, border, vc), unsafe_allow_html=True)
+            st.markdown(kpi_card(title, val, sub, border, vc, icon), unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Row: service level (OTIF + OST + manpower per order)
+    st.markdown("##### ⏱️ Service Level")
     _otif_disp = f"{otif_kpis['otif_pct']:.1f}%" if otif_kpis["available"] else "—"
     _otif_sub  = f"{otif_kpis['otif_orders']:,} of {otif_kpis['total_orders']:,} orders" if otif_kpis["available"] else "upload OST_Report (FILE 5)"
     _ost_disp  = f"{otif_kpis['ost_pct']:.1f}%"  if otif_kpis["available"] else "—"
     _ost_sub   = "order→dispatch < 24h" if otif_kpis["available"] else "upload OST_Report (FILE 5)"
     svc_cols = st.columns(3)
-    for col, (title, val, sub, border, vc) in zip(svc_cols, [
-        ("OTIF %",              _otif_disp,                               _otif_sub,                   "#27AE60", "#27AE60" if otif_kpis["available"] else "#FFFFFF"),
-        ("ORDER SERVICE TIME %",_ost_disp,                                _ost_sub,                    "#1565C0", "#1565C0" if otif_kpis["available"] else "#FFFFFF"),
-        ("MANPOWER PER ORDER",  f"{inv_kpis['manpower_per_order']:.2f}", "fixed manpower ÷ orders",   "#E67E22", "#FFFFFF"),
+    for col, (title, val, sub, border, vc, icon) in zip(svc_cols, [
+        ("OTIF %",              _otif_disp,                               _otif_sub,                   "#27AE60", "#27AE60" if otif_kpis["available"] else "#FFFFFF", "✅"),
+        ("ORDER SERVICE TIME %",_ost_disp,                                _ost_sub,                    "#1565C0", "#1565C0" if otif_kpis["available"] else "#FFFFFF", "⏱️"),
+        ("MANPOWER PER ORDER",  f"{inv_kpis['manpower_per_order']:.2f}", "fixed manpower ÷ orders",   "#E67E22", "#FFFFFF", "👷"),
     ]):
         with col:
-            st.markdown(kpi_card(title, val, sub, border, vc), unsafe_allow_html=True)
+            st.markdown(kpi_card(title, val, sub, border, vc, icon), unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── INVENTORY HEALTH ────────────────────────────────
+    st.markdown("##### ⏳ Expiry Risk")
     exp_kpis = compute_expiry_kpis(f_inventory)
     health_cols = st.columns(4)
-    for col, (title, val, sub, border, vc) in zip(health_cols, [
-        ("EXPIRED STOCK VALUE",   fmt_currency(exp_kpis["expired_value"]), "immediate write-off risk",      "#C0392B", "#C0392B"),
-        ("NEAR EXPIRY 0-30 DAYS", fmt_indian(exp_kpis["near_30_cases"]),  "cases expiring within 30 days", "#E67E22", "#E67E22"),
-        ("31-45 DAYS TO EXPIRY",  fmt_indian(exp_kpis["near_45_cases"]),  "cases expiring in 31-45 days",  "#F39C12", "#F39C12"),
-        ("46-60 DAYS TO EXPIRY",  fmt_indian(exp_kpis["near_60_cases"]),  "cases expiring in 46-60 days",  "#F1C40F", "#F1C40F"),
+    for col, (title, val, sub, border, vc, icon) in zip(health_cols, [
+        ("EXPIRED STOCK VALUE",   fmt_currency(exp_kpis["expired_value"]), "immediate write-off risk",      "#C0392B", "#C0392B", "🔴"),
+        ("NEAR EXPIRY 0-30 DAYS", fmt_indian(exp_kpis["near_30_cases"]),  "cases expiring within 30 days", "#E67E22", "#E67E22", "🟠"),
+        ("31-45 DAYS TO EXPIRY",  fmt_indian(exp_kpis["near_45_cases"]),  "cases expiring in 31-45 days",  "#F39C12", "#F39C12", "🟡"),
+        ("46-60 DAYS TO EXPIRY",  fmt_indian(exp_kpis["near_60_cases"]),  "cases expiring in 46-60 days",  "#F1C40F", "#F1C40F", "🟢"),
     ]):
         with col:
-            st.markdown(kpi_card(title, val, sub, border, vc), unsafe_allow_html=True)
+            st.markdown(kpi_card(title, val, sub, border, vc, icon), unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
