@@ -80,10 +80,19 @@ def render_trends(orders, despatch, returns):
     st.subheader("📈 Trends Over Time")
     st.caption("Volume movement across the selected period. Switch granularity below.")
 
-    freq_label = st.radio(
-        "Granularity", ["Monthly", "Weekly", "Daily"],
-        horizontal=True, key="trend_freq",
-    )
+    if "trend_freq" not in st.session_state:
+        st.session_state["trend_freq"] = "Monthly"
+    freq_label = st.session_state["trend_freq"]
+    _g_cols = st.columns([1, 1, 1, 5])
+    for _i, _lbl in enumerate(["Monthly", "Weekly", "Daily"]):
+        with _g_cols[_i]:
+            if st.button(
+                _lbl, key=f"tfreq_{_lbl}",
+                type="primary" if freq_label == _lbl else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state["trend_freq"] = _lbl
+                st.rerun()
     freq = {"Monthly": "MS", "Weekly": "W", "Daily": "D"}[freq_label]
 
     trend = analytics.combined_trend(orders, despatch, returns, freq=freq)
@@ -141,7 +150,7 @@ def render_customers(orders, returns):
     if not pareto.empty:
         top1_share = pareto["Share_%"].iloc[0]
         # how many customers make up 80% of volume
-        within_80 = int((pareto["Cum_%"] <= 80).sum()) + 1
+        within_80 = min(int((pareto["Cum_%"] <= 80).sum()) + 1, len(pareto))
         with k[1]:
             st.markdown(kpi_card("TOP CUSTOMER SHARE", f"{top1_share:.1f}%",
                                  str(pareto["Customer"].iloc[0])[:22], "#27AE60"),

@@ -58,9 +58,12 @@ html, body, [class*="css"], .stMarkdown, .stApp {
 .selector-bar {
     background: linear-gradient(90deg, #1565C0 0%, #1B7BD6 100%);
     padding: 10px 20px; border-radius: 10px; color: white;
-    font-size: 14px; font-weight: 600; margin-bottom: 14px;
+    font-size: 14px; font-weight: 600; margin-bottom: 6px;
     box-shadow: 0 3px 12px rgba(21,101,192,0.30);
 }
+
+/* ── Zone / quick-filter chips ───────────────────────────────── */
+.wops-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 
 /* ── Error severity ──────────────────────────────────────────── */
 .error-high   { color: #E74C3C; font-weight: 700; }
@@ -98,6 +101,36 @@ section[data-testid="stSidebar"] .stFileUploader label { font-weight: 600; }
 ::-webkit-scrollbar-track { background: #0D1B2A; }
 ::-webkit-scrollbar-thumb { background: #1E3A5F; border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: #2C5179; }
+</style>
+"""
+
+LIGHT_MODE_CSS = """
+<style>
+/* ── LIGHT MODE OVERRIDE ─────────────────────────────────────── */
+.stApp, [data-testid="stAppViewContainer"],
+[data-testid="stMain"], .main { background-color: #EEF3F9 !important; }
+.block-container { background-color: #EEF3F9 !important; }
+[data-testid="stVerticalBlock"] { background-color: transparent; }
+
+.wops-kpi {
+    background: linear-gradient(180deg, #FFFFFF 0%, #F4F9FF 100%) !important;
+    box-shadow: 0 2px 8px rgba(21,101,192,0.12) !important;
+}
+.wops-kpi:hover { box-shadow: 0 8px 20px rgba(21,101,192,0.22) !important; }
+.wops-kpi-title { color: #5B7A9E !important; }
+.wops-kpi-sub   { color: #7A9AB8 !important; }
+
+section[data-testid="stSidebar"] {
+    background: #E4EBF5 !important;
+    border-right: 1px solid #B8CDE0 !important;
+}
+.stTabs [data-baseweb="tab"] { color: #5B7A9E !important; }
+.stTabs [aria-selected="true"] {
+    background: #D8E6F5 !important; color: #1244A2 !important;
+}
+::-webkit-scrollbar-track { background: #EEF3F9 !important; }
+::-webkit-scrollbar-thumb { background: #9DBAD4 !important; }
+.stDownloadButton button, .stButton button { border-color: #9DBAD4 !important; }
 </style>
 """
 

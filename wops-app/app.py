@@ -4,7 +4,7 @@ import pandas as pd
 st.set_page_config(layout="wide", page_title="WOPS Intelligence Dashboard", page_icon="📦")
 
 from src.styles import (
-    GLOBAL_CSS, app_header, kpi_card, selector_bar,
+    GLOBAL_CSS, LIGHT_MODE_CSS, app_header, kpi_card, selector_bar,
     fmt_currency, fmt_indian, rate_color, accuracy_color, fill_rate_color,
 )
 from src.data_loader import load_zsd, get_transaction_types
@@ -21,13 +21,22 @@ from src.charts import returns_bar_chart, channel_pie_chart, transport_state_bar
 from src.error_detection import compute_error_log, get_missing_batch_detail, get_duplicate_invoices
 from src import analytics, panels
 
+if "dark_mode" not in st.session_state:
+    st.session_state["dark_mode"] = True
+
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+if not st.session_state["dark_mode"]:
+    st.markdown(LIGHT_MODE_CSS, unsafe_allow_html=True)
 st.markdown(app_header(), unsafe_allow_html=True)
 
 
 # ── SIDEBAR ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 📦 WOPS Intelligence")
+    _theme_icon = "☀️ Light Mode" if st.session_state["dark_mode"] else "🌙 Dark Mode"
+    if st.button(_theme_icon, key="theme_toggle", use_container_width=True):
+        st.session_state["dark_mode"] = not st.session_state["dark_mode"]
+        st.rerun()
     st.markdown("---")
 
     st.markdown("##### 📂 Required data")
@@ -228,6 +237,23 @@ if date_range is not None:
     f_receiving = analytics.filter_by_date(f_receiving, "Receipt_Date",  _ds, _de)
 
 
+# ── ZONE CHIP HELPER ─────────────────────────────────────────────────────────
+def _zone_chips(prefix: str, state_key: str = "zone_box",
+                zones=("All Zones", "North", "South", "East", "West")):
+    """Row of chip buttons for quick zone selection."""
+    current = st.session_state.get(state_key, zones[0])
+    cols = st.columns(len(zones))
+    for col, z in zip(cols, zones):
+        with col:
+            if st.button(
+                z, key=f"zchip_{prefix}_{z}",
+                type="primary" if current == z else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state[state_key] = z
+                st.rerun()
+
+
 # ── TABS ──────────────────────────────────────────────────────────────────────
 tab1, tab2, tab_tr, tab_cu, tab3, tab4, tab5 = st.tabs([
     "📊 Dashboard", "🏭 RLM Zone View", "📈 Trends", "👥 Customers & Products",
@@ -240,6 +266,7 @@ tab1, tab2, tab_tr, tab_cu, tab3, tab4, tab5 = st.tabs([
 # ════════════════════════════════════════════════════════
 with tab1:
     st.markdown(selector_bar(plant_sel_disp, zone_sel), unsafe_allow_html=True)
+    _zone_chips("d")
 
     # Data freshness indicator (pd.notna guards against NaT, which is truthy)
     freshness = compute_data_freshness(f_orders, f_despatch)
@@ -405,10 +432,11 @@ with tab2:
     st.subheader("🏭 RLM Zone Comparison")
     st.caption("Side-by-side warehouse KPIs within a zone — mirrors the Excel RLM Dashboard. '—' = no data / zero denominator.")
 
-    rlm_zone = st.selectbox(
-        "Select Zone", ["North", "South", "East", "West", "All Zones"],
-        key="rlm_zone_sel",
-    )
+    _zone_chips("rlm", state_key="rlm_zone_sel",
+                zones=("North", "South", "East", "West", "All Zones"))
+    rlm_zone = st.session_state.get("rlm_zone_sel", "North")
+    if rlm_zone not in ("North", "South", "East", "West", "All Zones"):
+        rlm_zone = "North"
 
     rlm_df = compute_rlm_table(
         orders, despatch, returns, receiving, inventory,
@@ -443,33 +471,33 @@ with tab2:
                     "TOP DISPATCHER",
                     fmt_indian(rlm_df.loc[best_idx, "Cases_Dispatched"]),
                     rlm_df.loc[best_idx, "Warehouse"],
-                    "#27AE60", "#27AE60"
+                    "#27AE60", "#27AE60", "🏆"
                 ), unsafe_allow_html=True)
             else:
                 st.markdown(kpi_card("TOP DISPATCHER", "—", "no despatch data",
-                                     "#27AE60", "#FFFFFF"), unsafe_allow_html=True)
+                                     "#27AE60", "#FFFFFF", "🏆"), unsafe_allow_html=True)
         with c2:
             if worst_fr is not None:
                 low_fr = rlm_df.loc[worst_fr, "Fill_Rate_%"]
                 st.markdown(kpi_card(
                     "LOWEST FILL RATE", f"{low_fr:.1f}%",
                     rlm_df.loc[worst_fr, "Warehouse"],
-                    "#E67E22", fill_rate_color(low_fr)
+                    "#E67E22", fill_rate_color(low_fr), "📉"
                 ), unsafe_allow_html=True)
             else:
                 st.markdown(kpi_card("LOWEST FILL RATE", "—", "no order data",
-                                     "#E67E22", "#FFFFFF"), unsafe_allow_html=True)
+                                     "#E67E22", "#FFFFFF", "📉"), unsafe_allow_html=True)
         with c3:
             if worst_rr is not None:
                 high_rr = rlm_df.loc[worst_rr, "Return_Rate_%"]
                 st.markdown(kpi_card(
                     "HIGHEST RETURN RATE", f"{high_rr:.1f}%",
                     rlm_df.loc[worst_rr, "Warehouse"],
-                    "#C0392B", rate_color(high_rr)
+                    "#C0392B", rate_color(high_rr), "↩️"
                 ), unsafe_allow_html=True)
             else:
                 st.markdown(kpi_card("HIGHEST RETURN RATE", "—", "no despatch data",
-                                     "#C0392B", "#FFFFFF"), unsafe_allow_html=True)
+                                     "#C0392B", "#FFFFFF", "↩️"), unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### Warehouse KPI Summary")
@@ -584,6 +612,28 @@ with tab3:
         f_orders, f_despatch, f_returns, f_receiving, f_inventory, f_inv_acc
     )
 
+    # Severity filter chips
+    if "err_sev" not in st.session_state:
+        st.session_state["err_sev"] = "All"
+    _sev_opts = ["All", "HIGH", "MEDIUM", "LOW"]
+    _sev_cols = st.columns(len(_sev_opts))
+    for _sc, _sv in zip(_sev_cols, _sev_opts):
+        with _sc:
+            if st.button(
+                _sv, key=f"sev_{_sv}",
+                type="primary" if st.session_state["err_sev"] == _sv else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state["err_sev"] = _sv
+                st.rerun()
+
+    _sev_filter = st.session_state["err_sev"]
+    _err_display = (
+        error_df if _sev_filter == "All"
+        else error_df[error_df["Severity"] == _sev_filter]
+        if "Severity" in error_df.columns else error_df
+    )
+
     def _sev_style(val):
         if val == "HIGH":
             return "color: #E74C3C; font-weight: 700"
@@ -592,7 +642,8 @@ with tab3:
         return "color: #F1C40F; font-weight: 700"
 
     st.dataframe(
-        error_df.style.map(_sev_style, subset=["Severity"]),
+        _err_display.style.map(_sev_style, subset=["Severity"])
+        if "Severity" in _err_display.columns else _err_display,
         use_container_width=True, hide_index=True,
     )
 
@@ -642,14 +693,14 @@ with tab4:
         tp_vendors   = tp["Source_Plant"].nunique()   if "Source_Plant" in tp.columns else 0
         tp_dests     = tp["Dest_City"].nunique()      if "Dest_City"    in tp.columns else 0
 
-        for col, (title, val, sub) in zip(st.columns(4), [
-            ("TOTAL SHIPMENTS",     fmt_indian(tp_shipments), "rows in transport file"),
-            ("TOTAL CASES",         fmt_indian(tp_cases),     "Billing_Qty sum"),
-            ("UNIQUE SOURCES",      fmt_indian(tp_vendors),   "source plants"),
-            ("UNIQUE DESTINATIONS", fmt_indian(tp_dests),     "destination cities"),
+        for col, (title, val, sub, border, vc, icon) in zip(st.columns(4), [
+            ("TOTAL SHIPMENTS",     fmt_indian(tp_shipments), "rows in transport file", "#1565C0", "#FFFFFF", "📦"),
+            ("TOTAL CASES",         fmt_indian(tp_cases),     "Billing_Qty sum",        "#27AE60", "#FFFFFF", "📬"),
+            ("UNIQUE SOURCES",      fmt_indian(tp_vendors),   "source plants",          "#E67E22", "#FFFFFF", "🏭"),
+            ("UNIQUE DESTINATIONS", fmt_indian(tp_dests),     "destination cities",     "#8E44AD", "#FFFFFF", "📍"),
         ]):
             with col:
-                st.markdown(kpi_card(title, val, sub), unsafe_allow_html=True)
+                st.markdown(kpi_card(title, val, sub, border, vc, icon), unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -721,6 +772,7 @@ with tab5:
 # ════════════════════════════════════════════════════════
 with tab_tr:
     st.markdown(selector_bar(plant_sel_disp, zone_sel), unsafe_allow_html=True)
+    _zone_chips("tr")
     panels.render_trends(f_orders, f_despatch, f_returns)
 
 
@@ -729,4 +781,5 @@ with tab_tr:
 # ════════════════════════════════════════════════════════
 with tab_cu:
     st.markdown(selector_bar(plant_sel_disp, zone_sel), unsafe_allow_html=True)
+    _zone_chips("cu")
     panels.render_customers(f_orders, f_returns)
