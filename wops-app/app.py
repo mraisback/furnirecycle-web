@@ -211,6 +211,7 @@ st.query_params["plant"] = plant_sel
 # ── DATE RANGE + ALERT THRESHOLDS ────────────────────────────────────────────
 _dmin, _dmax = analytics.date_bounds([
     (orders, "Order_Date"), (despatch_vol, "Despatch_Date"), (returns, "Return_Date"),
+    (receiving_vol, "Receipt_Date"),
 ])
 date_range = None
 if _dmin is not None and _dmax is not None and _dmin < _dmax:
@@ -383,9 +384,9 @@ with tab1:
     # Row: service level (OTIF + OST + manpower per order)
     st.markdown("##### ⏱️ Service Level")
     _otif_disp = f"{otif_kpis['otif_pct']:.1f}%" if otif_kpis["available"] else "—"
-    _otif_sub  = f"{otif_kpis['otif_orders']:,} of {otif_kpis['total_orders']:,} orders" if otif_kpis["available"] else "upload OST_Report (FILE 5)"
+    _otif_sub  = f"{otif_kpis['otif_orders']:,} of {otif_kpis['total_orders']:,} order lines" if otif_kpis["available"] else "upload OST file (FILE 5)"
     _ost_disp  = f"{otif_kpis['ost_pct']:.1f}%"  if otif_kpis["available"] else "—"
-    _ost_sub   = "order→dispatch < 24h" if otif_kpis["available"] else "upload OST_Report (FILE 5)"
+    _ost_sub   = "order→dispatch < 24h" if otif_kpis["available"] else "upload OST file (FILE 5)"
     svc_cols = st.columns(3)
     for col, (title, val, sub, border, vc, icon) in zip(svc_cols, [
         ("OTIF %",              _otif_disp,                               _otif_sub,                   "#27AE60", "#27AE60" if otif_kpis["available"] else "#FFFFFF", "✅"),
@@ -776,6 +777,8 @@ with tab5:
     if _use_tp_receiving:
         export_tables.insert(5 if _use_tp_despatch else 4,
                              ("Receiving (Primary Trnsprt)", f_receiving_vol))
+    if f_ost is not None and not f_ost.empty:
+        export_tables.append(("Order Service Time", f_ost))
 
     # Combined multi-sheet Excel workbook for the current filter selection
     _have_data = any(d is not None and not d.empty for _, d in export_tables)

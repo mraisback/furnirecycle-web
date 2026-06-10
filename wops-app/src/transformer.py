@@ -197,43 +197,18 @@ def _build_ost(df: pd.DataFrame) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
-# ── Primary vs Secondary transport leg classification ─────────────────────────
-# Primary  = inbound moves into our warehouses  → Cases Received
-# Secondary = outbound moves to market/customers → Cases Dispatched
-_PRIMARY_SHIP_KEYS   = ("PRIM", "STO", "STOCK", "INTER", "DEPOT")
-_SECONDARY_SHIP_KEYS = ("SEC", "CUST", "SALE", "MARKET", "DIST", "TRADE")
+# ── Transport-sourced volume frames ──────────────────────────────────────────
+# Primary freight  = inbound moves into our warehouses  → Cases Received
+# Secondary freight = outbound moves to market           → Cases Dispatched
 
 
-def guess_shipment_type_split(types: list) -> tuple:
-    """Auto-classify Shipment_Type values into (primary, secondary) lists."""
-    prim = [t for t in types if any(k in str(t).upper() for k in _PRIMARY_SHIP_KEYS)]
-    sec  = [t for t in types if any(k in str(t).upper() for k in _SECONDARY_SHIP_KEYS)
-            and t not in prim]
-    return prim, sec
+def _build_despatch_from_transport(tp, known_plants: Optional[set] = None) -> Optional[pd.DataFrame]:
+    """Despatch frame from SECONDARY freight legs (Cases Dispatched source).
 
-
-def _split_transport(tp, primary_types: tuple, secondary_types: tuple, known_plants: set):
-    """Split transport rows into (primary, secondary) legs.
-
-    Priority 1 — explicit Shipment_Type selection from the sidebar.
-    Priority 2 — destination heuristic: a shipment whose destination is one of
-    our own plants is a primary (inter-plant) move; everything else is secondary.
+    When ``known_plants`` is given, rows whose SOURCE plant is not a known
+    warehouse are dropped (e.g. direct factory→customer sales) — unless that
+    would empty the frame, in which case all rows are kept.
     """
-    if tp is None or tp.empty:
-        return None, None
-    if "Shipment_Type" in tp.columns and (primary_types or secondary_types):
-        st_ser = tp["Shipment_Type"].fillna("").astype(str).str.strip()
-        return tp[st_ser.isin(primary_types)], tp[st_ser.isin(secondary_types)]
-    if "Dest_Plant_Key" in tp.columns and known_plants:
-        dest = _norm_plant_series(tp["Dest_Plant_Key"])
-        is_primary = dest.isin(known_plants)
-        return tp[is_primary], tp[~is_primary]
-    # Cannot classify — treat everything as secondary (outbound despatch)
-    return tp.iloc[0:0], tp
-
-
-def _build_despatch_from_transport(tp) -> Optional[pd.DataFrame]:
-    """Despatch frame from SECONDARY transport legs (Cases Dispatched source)."""
     if tp is None or tp.empty:
         return None
     n = len(tp)
@@ -253,13 +228,23 @@ def _build_despatch_from_transport(tp) -> Optional[pd.DataFrame]:
     out["Plant"]            = tp["Plant"].values if "Plant" in tp.columns else ["Unknown"] * n
     # Batch tracking lives in the salefl extract, not transport — never flag here
     out["Lot_No_Status"]    = "OK"
+
+    if known_plants:
+        mask = out["Plant"].isin(known_plants)
+        if mask.any():
+            out = out[mask]
     return out.reset_index(drop=True)
 
 
-def _build_receiving_from_transport(tp) -> Optional[pd.DataFrame]:
-    """Receiving frame from PRIMARY transport legs (Cases Received source).
+def _build_receiving_from_transport(tp, known_plants: Optional[set] = None) -> Optional[pd.DataFrame]:
+    """Receiving frame from PRIMARY freight legs (Cases Received source).
 
     The receiving plant is the DESTINATION of a primary move, not the source.
+
+    Primary freight extracts also contain agro-sourcing legs (potato / corn /
+    packaging into factories). Those destinations are factory codes, not
+    warehouses, so when ``known_plants`` is given only rows destined for a
+    known warehouse are kept — unless that would empty the frame.
     """
     if tp is None or tp.empty:
         return None
@@ -277,6 +262,11 @@ def _build_receiving_from_transport(tp) -> Optional[pd.DataFrame]:
         out["Plant"] = "Unknown"
     out["Good_Cases"]    = out["Total_Cases_Received"]
     out["Damaged_Cases"] = 0.0
+
+    if known_plants:
+        mask = out["Plant"].isin(known_plants)
+        if mask.any():
+            out = out[mask]
     return out.reset_index(drop=True)
 
 
@@ -337,6 +327,9 @@ def build_all_dataframes(
         result["inventory"] = _build_inventory(raw_nysd)
 
     # ── Transport frames — separate primary (inbound) and secondary (outbound) ──
+    # known_plants = our warehouse universe; filters out factory/agro freight legs
+    known_plants = set(ZONE_MAP) | set(zone_map)
+
     raw_prim_tp = None
     raw_sec_tp  = None
     if primary_transport_bytes:
@@ -347,14 +340,14 @@ def build_all_dataframes(
     if raw_sec_tp is not None:
         sec_built = _build_transport(raw_sec_tp)
         result["transport"]          = sec_built   # secondary drives Transport tab
-        result["despatch_secondary"] = _build_despatch_from_transport(sec_built)
+        result["despatch_secondary"] = _build_despatch_from_transport(sec_built, known_plants)
     elif raw_prim_tp is not None:
         # Only primary uploaded — use it for transport tab (limited analytics)
         result["transport"] = _build_transport(raw_prim_tp)
 
     if raw_prim_tp is not None:
         prim_built = _build_transport(raw_prim_tp)
-        result["receiving_primary"] = _build_receiving_from_transport(prim_built)
+        result["receiving_primary"] = _build_receiving_from_transport(prim_built, known_plants)
 
     # ── Inventory accuracy — prefer transport volumes, fall back to salefl ───
     def _pick(preferred, fallback):
