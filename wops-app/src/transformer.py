@@ -126,25 +126,74 @@ _OST_STATUS_COLS = ["Status", "Order Status", "Delivery Status", "OTIF Status",
                     "Delivery_Status", "Order_Status"]
 _OST_BUCKET_COLS = ["Order Time Bucket", "Time Bucket", "OST_Bucket", "Order Bucket",
                     "OST Bucket", "Time_Bucket"]
-_OST_ORDER_COLS  = ["Order No", "Order_No", "Invoice No", "Invoice no", "Doc. Number",
-                    "Document Number", "Sales Order"]
+_OST_ORDER_COLS  = ["Order", "Order No", "Order_No", "Invoice No", "Invoice no",
+                    "Doc. Number", "Document Number", "Sales Order", "Invoice"]
+_OST_TIME_COLS   = ["Order Service", "After Approved Order", "Order Service Time",
+                    "OST_Time", "OST Time"]
+
+
+def _parse_hms_to_hours(series: pd.Series) -> pd.Series:
+    """Parse 'HH:MM:SS' strings (e.g. '131:33:02') → total decimal hours."""
+    def _one(v):
+        if pd.isna(v):
+            return float("nan")
+        s = str(v).strip()
+        parts = s.split(":")
+        try:
+            if len(parts) == 3:
+                return int(parts[0]) + int(parts[1]) / 60 + float(parts[2]) / 3600
+            if len(parts) == 2:
+                return int(parts[0]) + int(parts[1]) / 60
+            return float(s)
+        except (ValueError, TypeError):
+            return float("nan")
+    return series.apply(_one)
 
 
 def _build_ost(df: pd.DataFrame) -> pd.DataFrame:
-    """Build Order Service Time frame from SAP OST_Report extract."""
+    """Build Order Service Time frame from SAP OST_Report extract.
+
+    Handles two column layouts:
+    1. Pre-bucketed  — has a 'Time Bucket' column (e.g. '<24', '>24')
+    2. Time-string   — has 'Order Service' in 'HH:MM:SS' format; bucket derived here
+    """
     if df.empty:
         return pd.DataFrame()
+
+    # Drop unnamed index column and all-NaN rows that Excel exports sometimes include
+    df = df.copy()
+    unnamed = [c for c in df.columns if str(c).startswith("Unnamed:")]
+    if unnamed:
+        df = df.drop(columns=unnamed)
+    df = df.dropna(how="all").reset_index(drop=True)
 
     plant_col  = _sc(df, _OST_PLANT_COLS)
     status_col = _sc(df, _OST_STATUS_COLS)
     bucket_col = _sc(df, _OST_BUCKET_COLS)
     order_col  = _sc(df, _OST_ORDER_COLS)
+    time_col   = _safe_col(df, *_OST_TIME_COLS)
 
     out = pd.DataFrame()
-    out["Plant"]       = _norm_plant_series(df[plant_col])                                   if plant_col  else "Unknown"
-    out["Status"]      = df[status_col].fillna("").astype(str).str.strip()                   if status_col else ""
-    out["Time_Bucket"] = df[bucket_col].fillna("").astype(str).str.strip()                   if bucket_col else ""
-    out["Order_No"]    = df[order_col].values                                                if order_col  else np.nan
+    out["Plant"]    = _norm_plant_series(df[plant_col]) if plant_col else "Unknown"
+    out["Status"]   = (df[status_col].fillna("").astype(str).str.strip()
+                       if status_col else "")
+    out["Order_No"] = df[order_col].values if order_col else np.nan
+
+    if bucket_col:
+        # Pre-bucketed layout — use as-is
+        out["Time_Bucket"] = df[bucket_col].fillna("").astype(str).str.strip()
+        out["OST_Hours"]   = np.nan
+    elif time_col:
+        # Time-string layout — derive bucket from HH:MM:SS
+        hours = _parse_hms_to_hours(df[time_col])
+        out["Time_Bucket"] = np.where(
+            hours.notna() & (hours < 24), "<24", ">24"
+        )
+        out["OST_Hours"] = hours.round(2)
+    else:
+        out["Time_Bucket"] = ""
+        out["OST_Hours"]   = np.nan
+
     return out.reset_index(drop=True)
 
 
@@ -235,15 +284,22 @@ def _build_receiving_from_transport(tp) -> Optional[pd.DataFrame]:
 def build_all_dataframes(
     zsd_bytes: bytes,
     nysd_bytes: bytes,
-    transport_bytes: Optional[bytes],
+    primary_transport_bytes: Optional[bytes],
+    secondary_transport_bytes: Optional[bytes],
     invoice_types: tuple,
     credit_types: tuple,
     challan_types: tuple,
     master_wh_bytes: Optional[bytes] = None,
     ost_bytes: Optional[bytes] = None,
-    primary_ship_types: tuple = (),
-    secondary_ship_types: tuple = (),
 ) -> Dict[str, Optional[pd.DataFrame]]:
+    """Build all analysis DataFrames from raw file bytes.
+
+    Transport sourcing:
+    - primary_transport_bytes  → Cases Received (inbound; destination plant used as Plant)
+    - secondary_transport_bytes → Cases Dispatched (outbound; source plant used as Plant)
+
+    When both are None, receiving/despatch fall back to the salefl-derived frames.
+    """
     from src.data_loader import load_zsd, load_nysd, load_transport, load_master_wh, load_ost
 
     result = {k: None for k in [
@@ -263,10 +319,6 @@ def build_all_dataframes(
 
     raw_nysd, _ = load_nysd(nysd_bytes)
 
-    raw_transport = None
-    if transport_bytes:
-        raw_transport, _ = load_transport(transport_bytes)
-
     ttd_col = _safe_col(raw_zsd, "Transaction Typ Desc", "Transaction Type Desc",
                          "Transaction Typ", "Billing Type")
     if not ttd_col:
@@ -284,18 +336,29 @@ def build_all_dataframes(
     if raw_nysd is not None:
         result["inventory"] = _build_inventory(raw_nysd)
 
-    if raw_transport is not None:
-        result["transport"] = _build_transport(raw_transport)
-        known_plants = set(ZONE_MAP) | set(zone_map)
-        prim_tp, sec_tp = _split_transport(
-            result["transport"], primary_ship_types, secondary_ship_types, known_plants
-        )
-        result["despatch_secondary"] = _build_despatch_from_transport(sec_tp)
-        result["receiving_primary"]  = _build_receiving_from_transport(prim_tp)
+    # ── Transport frames — separate primary (inbound) and secondary (outbound) ──
+    raw_prim_tp = None
+    raw_sec_tp  = None
+    if primary_transport_bytes:
+        raw_prim_tp, _ = load_transport(primary_transport_bytes)
+    if secondary_transport_bytes:
+        raw_sec_tp, _ = load_transport(secondary_transport_bytes)
 
-    # Inventory accuracy prefers transport-sourced volumes when available
+    if raw_sec_tp is not None:
+        sec_built = _build_transport(raw_sec_tp)
+        result["transport"]          = sec_built   # secondary drives Transport tab
+        result["despatch_secondary"] = _build_despatch_from_transport(sec_built)
+    elif raw_prim_tp is not None:
+        # Only primary uploaded — use it for transport tab (limited analytics)
+        result["transport"] = _build_transport(raw_prim_tp)
+
+    if raw_prim_tp is not None:
+        prim_built = _build_transport(raw_prim_tp)
+        result["receiving_primary"] = _build_receiving_from_transport(prim_built)
+
+    # ── Inventory accuracy — prefer transport volumes, fall back to salefl ───
     def _pick(preferred, fallback):
-        return preferred if preferred is not None and not preferred.empty else fallback
+        return preferred if (preferred is not None and not preferred.empty) else fallback
 
     result["inventory_accuracy"] = _build_inventory_accuracy(
         _pick(result["receiving_primary"], result["receiving"]),
@@ -545,29 +608,43 @@ def _build_inventory_accuracy(receiving, despatch, returns, inventory) -> pd.Dat
 def _build_transport(df: pd.DataFrame) -> pd.DataFrame:
     """Build transport DataFrame — tries named columns first, falls back to position index."""
     NAMED = {
-        "Source_Plant": ["Source_Plant", "Source Plant", "Plant"],
-        "Truck_No":     ["Truck_No", "Truck No", "Truck No."],
-        "Shipment_Doc": ["Shipment_Doc", "Shipment Doc"],
-        "Delivery_Doc": ["Delivery_Doc", "Delivery Doc"],
-        "Shipment_Type":["Shipment_Type", "Shipment Type"],
-        "Bill_Type":    ["Bill_Type", "Bill Type"],
+        # ── Source (origin warehouse) ──────────────────────────────────────────
+        "Source_Plant": ["Source_Plant", "Source Plant - Key", "Source Plant", "Plant"],
+        # ── Vehicle / routing ─────────────────────────────────────────────────
+        "Truck_No":     ["Truck_No", "Truck No", "Truck No.", "Truck no"],
+        "Shipment_Doc": ["Shipment_Doc", "Shipment Doc - Key", "Shipment Doc"],
+        "Delivery_Doc": ["Delivery_Doc", "Delivery Doc No", "Delivery Doc"],
+        "Shipment_Type":["Shipment_Type", "Shipment type - Text", "Shipment Type - Text",
+                         "Shipment Type", "Shipment type"],
+        "Bill_Type":    ["Bill_Type", "Bill Type - Key", "Bill Type"],
+        # ── Invoice / date ────────────────────────────────────────────────────
         "Invoice_No":   ["Invoice_No", "Invoice No", "Invoice no"],
         "Invoice_Date": ["Invoice_Date", "Invoice Date", "Date"],
         "Billing_Source_Plant": ["Billing_Source_Plant", "Billing Source Plant"],
-        "Dest_Plant_Key":   ["Dest_Plant_Key", "Dest Plant Key"],
-        "Dest_Plant_Name":  ["Dest_Plant_Name", "Dest Plant Name"],
-        "Dest_City":    ["Dest_City", "Dest City"],
-        "SKU":          ["SKU", "Material", "Material No"],
-        "Billing_Qty":  ["Billing_Qty", "Billing Qty(Cas)", "Billing Qty"],
-        "Billing_Qty_KG": ["Billing_Qty_KG", "Billing Qty KG"],
-        "Dest_State_Key": ["Dest_State_Key", "Dest State Key"],
-        "Dest_State":   ["Dest_State", "Dest State"],
-        "Dest_Unit":    ["Dest_Unit", "Dest Unit"],
-        "Material_Type":["Material_Type", "Material Type"],
-        "Vendor_No":    ["Vendor_No", "Vendor No"],
-        "Vendor_Name":  ["Vendor_Name", "Vendor Name"],
-        "Product_Category": ["Product_Category", "Product Category"],
-        "SKU_Description": ["SKU_Description", "Material Name"],
+        # ── Destination ───────────────────────────────────────────────────────
+        "Dest_Plant_Key":   ["Dest_Plant_Key", "Customer No/Destination Plant - Key",
+                             "Dest Plant Key"],
+        "Dest_Plant_Name":  ["Dest_Plant_Name", "Customer No/Destination Plant - Text",
+                             "Dest Plant Name"],
+        "Dest_City":    ["Dest_City", "Destination Plant City", "Dest City"],
+        "Dest_State_Key": ["Dest_State_Key", "Destination State - Key", "Dest State Key"],
+        "Dest_State":   ["Dest_State", "Destination State - Text", "Dest State"],
+        "Dest_Unit":    ["Dest_Unit", "Destination Unit - Text", "Dest Unit"],
+        # ── Product ───────────────────────────────────────────────────────────
+        "SKU":          ["SKU", "Material - Key", "Material", "Material No"],
+        "SKU_Description": ["SKU_Description", "Material - Text", "Material Name",
+                            "Material Description"],
+        "Material_Type":["Material_Type", "Material Type - Text", "Material Type",
+                         "Material Type - Key"],
+        "Product_Category": ["Product_Category", "Product Category - Text", "Product Category"],
+        # ── Quantity ──────────────────────────────────────────────────────────
+        # Prefer Billed Qty(CAS) (actual cases) over Billing Qty (may be kg/units)
+        "Billing_Qty":  ["Billing_Qty", "Billed Qty(CAS)", "Billing Qty(Cas)",
+                         "Billing Qty (Cas)", "Billing Qty"],
+        "Billing_Qty_KG": ["Billing_Qty_KG", "Billing Qty KG", "Billing Qty(KG)"],
+        # ── Vendor / carrier ─────────────────────────────────────────────────
+        "Vendor_No":    ["Vendor_No", "Vendor - Key", "Vendor No"],
+        "Vendor_Name":  ["Vendor_Name", "Vendor - Text", "Vendor Name"],
     }
 
     has_named = any(_safe_col(df, *v) for v in NAMED.values())

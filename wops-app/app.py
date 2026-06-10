@@ -7,8 +7,8 @@ from src.styles import (
     GLOBAL_CSS, LIGHT_MODE_CSS, app_header, kpi_card, selector_bar,
     fmt_currency, fmt_indian, rate_color, accuracy_color, fill_rate_color,
 )
-from src.data_loader import load_zsd, load_transport, get_transaction_types
-from src.transformer import build_all_dataframes, guess_shipment_type_split
+from src.data_loader import load_zsd, get_transaction_types
+from src.transformer import build_all_dataframes
 from src.filters import apply_filter, build_master_wh_numeric_maps
 from src.kpis import (
     compute_primary_kpis, compute_receiving_kpi, compute_inventory_kpis,
@@ -46,13 +46,23 @@ with st.sidebar:
 
     with st.expander("➕ Optional data sources (3–5)", expanded=False):
         st.caption("Unlock extra KPIs — transport analytics, zone/labour mapping, and service-level metrics.")
-        transport_file = st.file_uploader("FILE 3 — Transport.xlsx\nPrimary (received) + Secondary (dispatched) legs", type=["xlsx"], key="tp")
-        master_file    = st.file_uploader("FILE 4 — Master_WH.xlsx\nZone mapping + Rent/Labour KPIs", type=["xlsx"], key="mwh")
-        ost_file       = st.file_uploader("FILE 5 — OST_Report.xlsx\nOTIF % and Order Service Time %", type=["xlsx"], key="ost")
+        st.markdown("**Freight Reports (YTFPN exports)**")
+        primary_tp_file = st.file_uploader(
+            "FILE 3a — Primary Freight.xlsx  *(Cases Received / Inbound)*",
+            type=["xlsx"], key="tp_prim",
+        )
+        secondary_tp_file = st.file_uploader(
+            "FILE 3b — Secondary Freight.xlsx  *(Cases Dispatched / Outbound)*",
+            type=["xlsx"], key="tp_sec",
+        )
+        st.markdown("---")
+        master_file = st.file_uploader("FILE 4 — Master_WH.xlsx\nZone mapping + Rent/Labour KPIs", type=["xlsx"], key="mwh")
+        ost_file    = st.file_uploader("FILE 5 — Order to Service Time\nOTIF % and Order Service Time %", type=["xlsx"], key="ost")
 
     # Live status summary of what's loaded
     _loaded = [n for n, f in [
-        ("Sales", zsd_file), ("Stock", nysd_file), ("Transport", transport_file),
+        ("Sales", zsd_file), ("Stock", nysd_file),
+        ("Primary Freight", primary_tp_file), ("Secondary Freight", secondary_tp_file),
         ("Master_WH", master_file), ("OST", ost_file),
     ] if f]
     if _loaded:
@@ -65,11 +75,12 @@ with st.sidebar:
         st.stop()
 
     # Read ALL file bytes exactly once — UploadedFile pointer exhausts after first .read()
-    zsd_bytes  = zsd_file.read()
-    nysd_bytes = nysd_file.read()
-    tp_bytes   = transport_file.read() if transport_file else None
-    mwh_bytes  = master_file.read()    if master_file    else None
-    ost_bytes  = ost_file.read()       if ost_file       else None
+    zsd_bytes      = zsd_file.read()
+    nysd_bytes     = nysd_file.read()
+    prim_tp_bytes  = primary_tp_file.read()   if primary_tp_file   else None
+    sec_tp_bytes   = secondary_tp_file.read() if secondary_tp_file else None
+    mwh_bytes      = master_file.read()       if master_file       else None
+    ost_bytes      = ost_file.read()          if ost_file          else None
 
     raw_zsd, load_err = load_zsd(zsd_bytes)
     if load_err:
@@ -99,38 +110,6 @@ with st.sidebar:
         credit_types  = st.multiselect("Credit Note types",       all_types, key="cred_types")
         challan_types = st.multiselect("Delivery Challan types",  all_types, key="ch_types")
 
-    # ── Transport leg mapping (primary = received, secondary = dispatched) ──
-    primary_ship_types: tuple = ()
-    secondary_ship_types: tuple = ()
-    if tp_bytes:
-        _raw_tp, _ = load_transport(tp_bytes)
-        _ship_col = None
-        if _raw_tp is not None:
-            for _c in ("Shipment_Type", "Shipment Type"):
-                if _c in _raw_tp.columns:
-                    _ship_col = _c
-                    break
-        if _ship_col:
-            _ship_types = sorted(
-                _raw_tp[_ship_col].dropna().astype(str).str.strip().unique().tolist()
-            )
-            _tp_hash = hash(tp_bytes)
-            if st.session_state.get("_tp_hash") != _tp_hash:
-                st.session_state["_tp_hash"] = _tp_hash
-                _g_prim, _g_sec = guess_shipment_type_split(_ship_types)
-                st.session_state["prim_types"] = _g_prim
-                st.session_state["sec_types"]  = _g_sec
-            with st.expander("🚛 Transport leg mapping", expanded=False):
-                st.caption(
-                    "**Primary** = inbound to warehouse → Cases Received. "
-                    "**Secondary** = outbound to market → Cases Dispatched. "
-                    "Leave both empty to auto-classify by destination plant."
-                )
-                primary_ship_types = tuple(st.multiselect(
-                    "Primary shipment types", _ship_types, key="prim_types"))
-                secondary_ship_types = tuple(st.multiselect(
-                    "Secondary shipment types", _ship_types, key="sec_types"))
-
     st.markdown("---")
     # Seed Zone from the URL (?zone=North) so a view can be bookmarked / shared.
     _zone_opts = ["All Zones", "North", "South", "East", "West"]
@@ -155,10 +134,10 @@ if not invoice_types:
 
 with st.spinner("Processing data..."):
     dfs = build_all_dataframes(
-        zsd_bytes, nysd_bytes, tp_bytes,
+        zsd_bytes, nysd_bytes,
+        prim_tp_bytes, sec_tp_bytes,
         tuple(invoice_types), tuple(credit_types), tuple(challan_types),
         mwh_bytes, ost_bytes,
-        primary_ship_types, secondary_ship_types,
     )
 
 orders       = dfs["customer_orders"]
@@ -737,7 +716,7 @@ with tab3:
 # ════════════════════════════════════════════════════════
 with tab4:
     if transport is None or transport.empty:
-        st.info("Upload FILE 3 (Transport.xlsx) to view transport analytics.")
+        st.info("Upload FILE 3b (Secondary Freight.xlsx) to view transport analytics.")
     else:
         st.subheader("🚚 Transport Analysis")
         tp = f_transport if (f_transport is not None and not f_transport.empty) else transport
