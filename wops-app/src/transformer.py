@@ -199,32 +199,29 @@ def _build_ost(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ── Memory optimisation ───────────────────────────────────────────────────────
-# Low-cardinality string columns → Categorical (Plant, Zone, channel, status …)
-# Numeric quantity columns      → float32  (saves 50 % vs float64, no precision loss for cases)
-# Currency/value columns are intentionally kept as float64 for INR precision.
+# Numeric quantity columns → float32 (saves 50 % vs float64, no precision loss
+# for case counts). Currency/value columns are intentionally kept as float64
+# for INR precision. String columns are NOT converted to Categorical: categorical
+# dtype leaks through .map()/groupby operations downstream and breaks arithmetic
+# (e.g. plant_return_rates dividing a mapped Series raises TypeError).
 
 _MEM_MAP: dict = {
-    # key: (cat_cols, float32_cols)
-    "customer_orders":    (["Customer_Type", "Plant", "Zone"], ["Cases_Ordered", "Unit_Price_INR"]),
-    "order_despatch":     (["Plant", "Zone"], ["Cases_Despatched"]),
-    "returns":            (["Plant", "Zone", "Damage_Category"], ["Returned_Cases"]),
-    "receiving":          (["Plant", "Zone"], ["Total_Cases_Received", "Good_Cases", "Damaged_Cases"]),
-    "inventory":          (["Plant", "Zone", "Status", "Expiry_Risk"], []),
-    "transport":          (["Plant", "Zone", "Dest_State", "Material_Type", "Shipment_Type"],
-                           ["Billing_Qty", "Billing_Qty_KG"]),
-    "despatch_secondary": (["Plant", "Zone"], ["Cases_Despatched"]),
-    "receiving_primary":  (["Plant", "Zone"], ["Total_Cases_Received", "Good_Cases", "Damaged_Cases"]),
-    "ost":                (["Plant", "Zone", "Status", "Time_Bucket"], ["OST_Hours"]),
+    # key: float32 columns
+    "customer_orders":    ["Cases_Ordered", "Unit_Price_INR"],
+    "order_despatch":     ["Cases_Despatched"],
+    "returns":            ["Returned_Cases"],
+    "receiving":          ["Total_Cases_Received", "Good_Cases", "Damaged_Cases"],
+    "transport":          ["Billing_Qty", "Billing_Qty_KG"],
+    "despatch_secondary": ["Cases_Despatched"],
+    "receiving_primary":  ["Total_Cases_Received", "Good_Cases", "Damaged_Cases"],
+    "ost":                ["OST_Hours"],
 }
 
 
-def _mem_optimise(df: pd.DataFrame, cat_cols: list, f32_cols: list) -> pd.DataFrame:
-    """Downcast in-place: low-cardinality strings → Categorical, qty floats → float32."""
+def _mem_optimise(df: pd.DataFrame, f32_cols: list) -> pd.DataFrame:
+    """Downcast quantity float columns to float32 to cut cached memory."""
     if df is None or df.empty:
         return df
-    for col in cat_cols:
-        if col in df.columns:
-            df[col] = df[col].astype("category")
     for col in f32_cols:
         if col in df.columns and pd.api.types.is_float_dtype(df[col]):
             df[col] = df[col].astype("float32")
@@ -402,11 +399,11 @@ def build_all_dataframes(
         if df is not None and not df.empty and "Plant" in df.columns:
             result[key] = add_zone(df, zone_map or None)
 
-    # Downcast to Categorical / float32 to cut memory before caching
-    for key, entry in _MEM_MAP.items():
+    # Downcast quantity floats to float32 to cut memory before caching
+    for key, f32_cols in _MEM_MAP.items():
         df = result.get(key)
         if df is not None and not df.empty:
-            result[key] = _mem_optimise(df, *entry)
+            result[key] = _mem_optimise(df, f32_cols)
 
     gc.collect()
     return result
