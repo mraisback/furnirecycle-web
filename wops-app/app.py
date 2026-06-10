@@ -132,13 +132,15 @@ if not invoice_types:
     st.warning("No Invoice types selected. Open **⚙ Column Mapping** in the sidebar.")
     st.stop()
 
-with st.spinner("Processing data..."):
+with st.status("⏳ Processing data…", expanded=False) as _proc_status:
+    _proc_status.write("📂 Parsing uploaded files and building analytics frames…")
     dfs = build_all_dataframes(
         zsd_bytes, nysd_bytes,
         prim_tp_bytes, sec_tp_bytes,
         tuple(invoice_types), tuple(credit_types), tuple(challan_types),
         mwh_bytes, ost_bytes,
     )
+    _proc_status.update(label="✅ Data ready", state="complete", expanded=False)
 
 orders       = dfs["customer_orders"]
 despatch     = dfs["order_despatch"]
