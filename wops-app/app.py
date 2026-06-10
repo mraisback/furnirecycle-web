@@ -7,12 +7,13 @@ from src.styles import (
     GLOBAL_CSS, LIGHT_MODE_CSS, app_header, kpi_card, selector_bar,
     fmt_currency, fmt_indian, rate_color, accuracy_color, fill_rate_color,
 )
-from src.data_loader import load_zsd, get_transaction_types
-from src.transformer import build_all_dataframes
+from src.data_loader import load_zsd, load_transport, get_transaction_types
+from src.transformer import build_all_dataframes, guess_shipment_type_split
 from src.filters import apply_filter, build_master_wh_numeric_maps
 from src.kpis import (
     compute_primary_kpis, compute_receiving_kpi, compute_inventory_kpis,
-    compute_rs_per_case, compute_cases_per_manhour_unload, compute_otif_kpis,
+    compute_rs_per_case, compute_cases_per_manhour_load,
+    compute_cases_per_manhour_unload, compute_otif_kpis,
     compute_expiry_kpis, compute_returns_by_category,
     compute_channel_split, compute_inventory_health_table,
     compute_data_freshness, compute_rlm_table,
@@ -45,7 +46,7 @@ with st.sidebar:
 
     with st.expander("➕ Optional data sources (3–5)", expanded=False):
         st.caption("Unlock extra KPIs — transport analytics, zone/labour mapping, and service-level metrics.")
-        transport_file = st.file_uploader("FILE 3 — Transport.xlsx\nTransport & vendor analytics", type=["xlsx"], key="tp")
+        transport_file = st.file_uploader("FILE 3 — Transport.xlsx\nPrimary (received) + Secondary (dispatched) legs", type=["xlsx"], key="tp")
         master_file    = st.file_uploader("FILE 4 — Master_WH.xlsx\nZone mapping + Rent/Labour KPIs", type=["xlsx"], key="mwh")
         ost_file       = st.file_uploader("FILE 5 — OST_Report.xlsx\nOTIF % and Order Service Time %", type=["xlsx"], key="ost")
 
@@ -98,6 +99,38 @@ with st.sidebar:
         credit_types  = st.multiselect("Credit Note types",       all_types, key="cred_types")
         challan_types = st.multiselect("Delivery Challan types",  all_types, key="ch_types")
 
+    # ── Transport leg mapping (primary = received, secondary = dispatched) ──
+    primary_ship_types: tuple = ()
+    secondary_ship_types: tuple = ()
+    if tp_bytes:
+        _raw_tp, _ = load_transport(tp_bytes)
+        _ship_col = None
+        if _raw_tp is not None:
+            for _c in ("Shipment_Type", "Shipment Type"):
+                if _c in _raw_tp.columns:
+                    _ship_col = _c
+                    break
+        if _ship_col:
+            _ship_types = sorted(
+                _raw_tp[_ship_col].dropna().astype(str).str.strip().unique().tolist()
+            )
+            _tp_hash = hash(tp_bytes)
+            if st.session_state.get("_tp_hash") != _tp_hash:
+                st.session_state["_tp_hash"] = _tp_hash
+                _g_prim, _g_sec = guess_shipment_type_split(_ship_types)
+                st.session_state["prim_types"] = _g_prim
+                st.session_state["sec_types"]  = _g_sec
+            with st.expander("🚛 Transport leg mapping", expanded=False):
+                st.caption(
+                    "**Primary** = inbound to warehouse → Cases Received. "
+                    "**Secondary** = outbound to market → Cases Dispatched. "
+                    "Leave both empty to auto-classify by destination plant."
+                )
+                primary_ship_types = tuple(st.multiselect(
+                    "Primary shipment types", _ship_types, key="prim_types"))
+                secondary_ship_types = tuple(st.multiselect(
+                    "Secondary shipment types", _ship_types, key="sec_types"))
+
     st.markdown("---")
     # Seed Zone from the URL (?zone=North) so a view can be bookmarked / shared.
     _zone_opts = ["All Zones", "North", "South", "East", "West"]
@@ -125,6 +158,7 @@ with st.spinner("Processing data..."):
         zsd_bytes, nysd_bytes, tp_bytes,
         tuple(invoice_types), tuple(credit_types), tuple(challan_types),
         mwh_bytes, ost_bytes,
+        primary_ship_types, secondary_ship_types,
     )
 
 orders       = dfs["customer_orders"]
@@ -135,6 +169,16 @@ inventory    = dfs["inventory"]
 inv_accuracy = dfs["inventory_accuracy"]
 transport    = dfs["transport"]
 ost          = dfs["ost"]
+
+# ── Volume source preference ────────────────────────────────────────────────
+# Cases Dispatched ← SECONDARY transport legs; Cases Received ← PRIMARY legs.
+# Falls back to the salefl-derived frames when no transport file is uploaded.
+despatch_sec  = dfs["despatch_secondary"]
+receiving_pri = dfs["receiving_primary"]
+_use_tp_despatch  = despatch_sec  is not None and not despatch_sec.empty
+_use_tp_receiving = receiving_pri is not None and not receiving_pri.empty
+despatch_vol  = despatch_sec  if _use_tp_despatch  else despatch
+receiving_vol = receiving_pri if _use_tp_receiving else receiving
 
 # Build plant display map and master numeric maps
 from src.filters import build_zone_map_from_master, PLANT_NAME_MAP, _norm_plant_key
@@ -187,7 +231,7 @@ st.query_params["plant"] = plant_sel
 
 # ── DATE RANGE + ALERT THRESHOLDS ────────────────────────────────────────────
 _dmin, _dmax = analytics.date_bounds([
-    (orders, "Order_Date"), (despatch, "Despatch_Date"), (returns, "Return_Date"),
+    (orders, "Order_Date"), (despatch_vol, "Despatch_Date"), (returns, "Return_Date"),
 ])
 date_range = None
 if _dmin is not None and _dmax is not None and _dmin < _dmax:
@@ -218,23 +262,27 @@ near_exp_days = int(st.sidebar.number_input(
 def flt(df):
     return apply_filter(df, zone_sel, plant_sel) if df is not None else None
 
-f_orders    = flt(orders)
-f_despatch  = flt(despatch)
-f_returns   = flt(returns)
-f_receiving = flt(receiving)
-f_inventory = flt(inventory)
-f_inv_acc   = flt(inv_accuracy)
-f_transport = flt(transport)
-f_ost       = flt(ost)
+f_orders        = flt(orders)
+f_despatch      = flt(despatch)        # salefl-based — batch QA / error log
+f_despatch_vol  = flt(despatch_vol)    # volume KPIs (secondary transport when available)
+f_returns       = flt(returns)
+f_receiving     = flt(receiving)       # salefl challans — expiry detail
+f_receiving_vol = flt(receiving_vol)   # volume KPIs (primary transport when available)
+f_inventory     = flt(inventory)
+f_inv_acc       = flt(inv_accuracy)
+f_transport     = flt(transport)
+f_ost           = flt(ost)
 
 # Date-range filter on the transactional frames (inventory is a point-in-time
 # snapshot, so it is intentionally excluded).
 if date_range is not None:
     _ds, _de = date_range
-    f_orders    = analytics.filter_by_date(f_orders,    "Order_Date",    _ds, _de)
-    f_despatch  = analytics.filter_by_date(f_despatch,  "Despatch_Date", _ds, _de)
-    f_returns   = analytics.filter_by_date(f_returns,   "Return_Date",   _ds, _de)
-    f_receiving = analytics.filter_by_date(f_receiving, "Receipt_Date",  _ds, _de)
+    f_orders        = analytics.filter_by_date(f_orders,        "Order_Date",    _ds, _de)
+    f_despatch      = analytics.filter_by_date(f_despatch,      "Despatch_Date", _ds, _de)
+    f_despatch_vol  = analytics.filter_by_date(f_despatch_vol,  "Despatch_Date", _ds, _de)
+    f_returns       = analytics.filter_by_date(f_returns,       "Return_Date",   _ds, _de)
+    f_receiving     = analytics.filter_by_date(f_receiving,     "Receipt_Date",  _ds, _de)
+    f_receiving_vol = analytics.filter_by_date(f_receiving_vol, "Receipt_Date",  _ds, _de)
 
 
 # ── ZONE CHIP HELPER ─────────────────────────────────────────────────────────
@@ -269,7 +317,7 @@ with tab1:
     _zone_chips("d")
 
     # Data freshness indicator (pd.notna guards against NaT, which is truthy)
-    freshness = compute_data_freshness(f_orders, f_despatch)
+    freshness = compute_data_freshness(f_orders, f_despatch_vol)
     parts = []
     if pd.notna(freshness["max_order_date"]):
         parts.append(f"Latest order: **{freshness['max_order_date'].strftime('%d %b %Y')}**")
@@ -280,23 +328,26 @@ with tab1:
 
     # ── ALERTS — threshold-driven exceptions ─────────────
     panels.render_alerts(
-        f_despatch, f_returns, f_inventory,
+        f_despatch_vol, f_returns, f_inventory,
         rr_warn, rr_crit, near_exp_days, plant_display,
     )
 
     # ── PRIMARY KPIs — row 1: volume ─────────────────────
-    primary        = compute_primary_kpis(f_orders, f_despatch, f_returns)
-    cases_received = compute_receiving_kpi(f_receiving)
+    primary        = compute_primary_kpis(f_orders, f_despatch_vol, f_returns)
+    cases_received = compute_receiving_kpi(f_receiving_vol)
     rr             = primary["return_rate"]
     fr             = primary["fill_rate"]
+
+    _disp_src = "secondary transport"        if _use_tp_despatch  else "salefl invoices"
+    _recv_src = "primary transport inbound"  if _use_tp_receiving else "delivery challans (salefl)"
 
     st.markdown("##### 📦 Volume & Flow")
     r1 = st.columns(4)
     for col, (title, val, sub, border, vc, icon) in zip(r1, [
-        ("CASES ORDERED",    fmt_indian(primary["total_ordered"]),    "from customer orders",   "#1565C0", "#FFFFFF", "🛒"),
-        ("CASES DISPATCHED", fmt_indian(primary["cases_dispatched"]), "shipped to customers",   "#27AE60", "#FFFFFF", "🚚"),
+        ("CASES ORDERED",    fmt_indian(primary["total_ordered"]),    "salefl customer orders", "#1565C0", "#FFFFFF", "🛒"),
+        ("CASES DISPATCHED", fmt_indian(primary["cases_dispatched"]), _disp_src,                "#27AE60", "#FFFFFF", "🚚"),
         ("FILL RATE %",      f"{fr:.1f}%",                           "dispatched ÷ ordered",   "#27AE60", fill_rate_color(fr), "🎯"),
-        ("CASES RECEIVED",   fmt_indian(cases_received),             "inbound to warehouse",   "#2980B9", "#FFFFFF", "📥"),
+        ("CASES RECEIVED",   fmt_indian(cases_received),             _recv_src,                "#2980B9", "#FFFFFF", "📥"),
     ]):
         with col:
             st.markdown(kpi_card(title, val, sub, border, vc, icon), unsafe_allow_html=True)
@@ -319,16 +370,19 @@ with tab1:
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── INVENTORY KPIs ───────────────────────────────────
-    inv_kpis = compute_inventory_kpis(f_inventory, f_despatch, fixed_manpower, f_orders)
+    inv_kpis = compute_inventory_kpis(f_inventory, f_despatch_vol, fixed_manpower, f_orders)
     sc_disp  = "No dispatch" if inv_kpis["stock_cover_na"] else f"{inv_kpis['stock_cover']:.1f}"
     sc_sub   = "no despatch data" if inv_kpis["stock_cover_na"] else "days of forward cover"
 
+    load_mph = compute_cases_per_manhour_load(
+        f_despatch_vol, master_maps.get("labour", {}), zone_sel, plant_sel, fixed_manpower
+    )
     unload_mph = compute_cases_per_manhour_unload(
-        f_receiving, master_maps.get("unload_labour", {}), zone_sel, plant_sel, fixed_manpower
+        f_receiving_vol, master_maps.get("unload_labour", {}), zone_sel, plant_sel, fixed_manpower
     )
     otif_kpis  = compute_otif_kpis(f_ost)
 
-    rs_case   = compute_rs_per_case(f_despatch, master_maps.get("rent", {}), zone_sel, plant_sel)
+    rs_case   = compute_rs_per_case(f_despatch_vol, master_maps.get("rent", {}), zone_sel, plant_sel)
     rs_disp   = fmt_currency(rs_case) if rs_case is not None else "—"
     rs_sub    = "rent ÷ cases dispatched" if rs_case is not None else "upload Master_WH with Rent column"
 
@@ -336,10 +390,10 @@ with tab1:
     st.markdown("##### 💰 Inventory & Cost")
     inv_cols = st.columns(5)
     for col, (title, val, sub, border, vc, icon) in zip(inv_cols, [
-        ("TOTAL INVENTORY VALUE",    fmt_currency(inv_kpis["total_value"]),   "month-end stock",               "#E67E22", "#FFFFFF", "💰"),
+        ("TOTAL INVENTORY VALUE",    fmt_currency(inv_kpis["total_value"]),   "month-end stock (css)",         "#E67E22", "#FFFFFF", "💰"),
         ("STOCK COVER (DAYS)",       sc_disp,                                 sc_sub,                          "#E67E22", "#FFFFFF", "📆"),
-        ("CASES LOADED / MANHOUR",   f"{inv_kpis['cases_per_manhour']:.1f}", f"based on {fixed_manpower} mp", "#E67E22", "#FFFFFF", "📤"),
-        ("CASES UNLOADED / MANHOUR", f"{unload_mph:.1f}",                    "inbound ÷ unloading labour",    "#2980B9", "#FFFFFF", "📥"),
+        ("CASES LOADED / MANHOUR",   f"{load_mph:.1f}",                      "dispatched ÷ loading manpower", "#E67E22", "#FFFFFF", "📤"),
+        ("CASES UNLOADED / MANHOUR", f"{unload_mph:.1f}",                    "received ÷ unloading manpower", "#2980B9", "#FFFFFF", "📥"),
         ("Rs/CASE",                  rs_disp,                                 rs_sub,                          "#8E44AD", "#FFFFFF", "🏷️"),
     ]):
         with col:
@@ -439,7 +493,7 @@ with tab2:
         rlm_zone = "North"
 
     rlm_df = compute_rlm_table(
-        orders, despatch, returns, receiving, inventory,
+        orders, despatch_vol, returns, receiving_vol, inventory,
         zone_sel=rlm_zone,
         fixed_manpower=fixed_manpower,
         master_maps=master_maps,
@@ -738,6 +792,11 @@ with tab5:
         ("Month-End Inventory", f_inventory),
         ("Inventory Accuracy",  f_inv_acc),
     ]
+    if _use_tp_despatch:
+        export_tables.insert(2, ("Despatch (Secondary Trnsprt)", f_despatch_vol))
+    if _use_tp_receiving:
+        export_tables.insert(5 if _use_tp_despatch else 4,
+                             ("Receiving (Primary Trnsprt)", f_receiving_vol))
 
     # Combined multi-sheet Excel workbook for the current filter selection
     _have_data = any(d is not None and not d.empty for _, d in export_tables)
@@ -773,7 +832,7 @@ with tab5:
 with tab_tr:
     st.markdown(selector_bar(plant_sel_disp, zone_sel), unsafe_allow_html=True)
     _zone_chips("tr")
-    panels.render_trends(f_orders, f_despatch, f_returns)
+    panels.render_trends(f_orders, f_despatch_vol, f_returns)
 
 
 # ════════════════════════════════════════════════════════

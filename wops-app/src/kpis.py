@@ -98,6 +98,36 @@ def compute_rs_per_case(
     return total_rent / cases_dispatched
 
 
+def compute_cases_per_manhour_load(
+    despatch,
+    labour_map: Dict[str, float],
+    zone_sel: str,
+    plant_sel: str,
+    fixed_manpower: int = 50,
+) -> float:
+    """Cases Dispatched ÷ Loading Labour per plant (from Master_WH).
+
+    Falls back to ``fixed_manpower`` when no loading-labour data is available.
+    Returns 0.0 when no dispatches exist.
+    """
+    cases_dispatched = _safe_sum(despatch, "Cases_Despatched")
+    if cases_dispatched == 0:
+        return 0.0
+    if not labour_map or despatch is None or despatch.empty:
+        return cases_dispatched / max(fixed_manpower, 1)
+
+    if plant_sel != "All Plants" and "Plant" in despatch.columns:
+        labour = labour_map.get(str(plant_sel), fixed_manpower)
+    else:
+        plants = (
+            despatch["Plant"].dropna().astype(str).unique()
+            if "Plant" in despatch.columns else []
+        )
+        labour = sum(labour_map.get(p, fixed_manpower) for p in plants) if len(plants) > 0 else fixed_manpower
+
+    return cases_dispatched / max(labour, 1)
+
+
 def compute_cases_per_manhour_unload(
     receiving,
     unload_map: Dict[str, float],

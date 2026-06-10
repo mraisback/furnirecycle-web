@@ -3,7 +3,7 @@ import numpy as np
 from datetime import date, datetime, timedelta
 from typing import Optional, Dict
 import streamlit as st
-from src.filters import add_zone, build_zone_map_from_master
+from src.filters import add_zone, build_zone_map_from_master, ZONE_MAP
 
 PHYSICAL_DAMAGE = {"AIR LEAK/DAMAGE PIEC", "CARTON DAMAGE", "DAMAGED IN TRANSIT"}
 QUALITY_ISSUE   = {"QAS RELATED ISSUE", "AGING STOCK"}
@@ -148,6 +148,89 @@ def _build_ost(df: pd.DataFrame) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
+# ── Primary vs Secondary transport leg classification ─────────────────────────
+# Primary  = inbound moves into our warehouses  → Cases Received
+# Secondary = outbound moves to market/customers → Cases Dispatched
+_PRIMARY_SHIP_KEYS   = ("PRIM", "STO", "STOCK", "INTER", "DEPOT")
+_SECONDARY_SHIP_KEYS = ("SEC", "CUST", "SALE", "MARKET", "DIST", "TRADE")
+
+
+def guess_shipment_type_split(types: list) -> tuple:
+    """Auto-classify Shipment_Type values into (primary, secondary) lists."""
+    prim = [t for t in types if any(k in str(t).upper() for k in _PRIMARY_SHIP_KEYS)]
+    sec  = [t for t in types if any(k in str(t).upper() for k in _SECONDARY_SHIP_KEYS)
+            and t not in prim]
+    return prim, sec
+
+
+def _split_transport(tp, primary_types: tuple, secondary_types: tuple, known_plants: set):
+    """Split transport rows into (primary, secondary) legs.
+
+    Priority 1 — explicit Shipment_Type selection from the sidebar.
+    Priority 2 — destination heuristic: a shipment whose destination is one of
+    our own plants is a primary (inter-plant) move; everything else is secondary.
+    """
+    if tp is None or tp.empty:
+        return None, None
+    if "Shipment_Type" in tp.columns and (primary_types or secondary_types):
+        st_ser = tp["Shipment_Type"].fillna("").astype(str).str.strip()
+        return tp[st_ser.isin(primary_types)], tp[st_ser.isin(secondary_types)]
+    if "Dest_Plant_Key" in tp.columns and known_plants:
+        dest = _norm_plant_series(tp["Dest_Plant_Key"])
+        is_primary = dest.isin(known_plants)
+        return tp[is_primary], tp[~is_primary]
+    # Cannot classify — treat everything as secondary (outbound despatch)
+    return tp.iloc[0:0], tp
+
+
+def _build_despatch_from_transport(tp) -> Optional[pd.DataFrame]:
+    """Despatch frame from SECONDARY transport legs (Cases Dispatched source)."""
+    if tp is None or tp.empty:
+        return None
+    n = len(tp)
+    out = pd.DataFrame()
+    out["Order_No"] = tp["Invoice_No"].values if "Invoice_No" in tp.columns else np.nan
+    cust = None
+    if "Dest_Plant_Name" in tp.columns and tp["Dest_Plant_Name"].notna().any():
+        cust = tp["Dest_Plant_Name"]
+    elif "Dest_City" in tp.columns:
+        cust = tp["Dest_City"]
+    out["Customer"]         = cust.values if cust is not None else np.nan
+    out["SKU"]              = tp["SKU"].values if "SKU" in tp.columns else np.nan
+    out["Lot_No"]           = ""
+    out["Despatch_Date"]    = tp["Invoice_Date"].values if "Invoice_Date" in tp.columns else pd.NaT
+    out["Cases_Despatched"] = _to_numeric(tp["Billing_Qty"]).values if "Billing_Qty" in tp.columns else 0.0
+    out["Carrier"]          = tp["Truck_No"].values if "Truck_No" in tp.columns else np.nan
+    out["Plant"]            = tp["Plant"].values if "Plant" in tp.columns else ["Unknown"] * n
+    # Batch tracking lives in the salefl extract, not transport — never flag here
+    out["Lot_No_Status"]    = "OK"
+    return out.reset_index(drop=True)
+
+
+def _build_receiving_from_transport(tp) -> Optional[pd.DataFrame]:
+    """Receiving frame from PRIMARY transport legs (Cases Received source).
+
+    The receiving plant is the DESTINATION of a primary move, not the source.
+    """
+    if tp is None or tp.empty:
+        return None
+    out = pd.DataFrame()
+    out["Receipt_No"]      = tp["Invoice_No"].values if "Invoice_No" in tp.columns else np.nan
+    out["Receipt_Date"]    = tp["Invoice_Date"].values if "Invoice_Date" in tp.columns else pd.NaT
+    out["SKU"]             = tp["SKU"].values if "SKU" in tp.columns else np.nan
+    out["SKU_Description"] = tp["SKU_Description"].values if "SKU_Description" in tp.columns else np.nan
+    out["Lot_No"]          = ""
+    out["Expiry_Date"]     = pd.NaT
+    out["Total_Cases_Received"] = _to_numeric(tp["Billing_Qty"]).values if "Billing_Qty" in tp.columns else 0.0
+    if "Dest_Plant_Key" in tp.columns:
+        out["Plant"] = _norm_plant_series(pd.Series(tp["Dest_Plant_Key"].values))
+    else:
+        out["Plant"] = "Unknown"
+    out["Good_Cases"]    = out["Total_Cases_Received"]
+    out["Damaged_Cases"] = 0.0
+    return out.reset_index(drop=True)
+
+
 @st.cache_data(show_spinner=False)
 def build_all_dataframes(
     zsd_bytes: bytes,
@@ -158,12 +241,15 @@ def build_all_dataframes(
     challan_types: tuple,
     master_wh_bytes: Optional[bytes] = None,
     ost_bytes: Optional[bytes] = None,
+    primary_ship_types: tuple = (),
+    secondary_ship_types: tuple = (),
 ) -> Dict[str, Optional[pd.DataFrame]]:
     from src.data_loader import load_zsd, load_nysd, load_transport, load_master_wh, load_ost
 
     result = {k: None for k in [
         "customer_orders", "order_despatch", "returns",
-        "receiving", "inventory", "inventory_accuracy", "transport", "ost"
+        "receiving", "inventory", "inventory_accuracy", "transport", "ost",
+        "despatch_secondary", "receiving_primary",
     ]}
 
     zone_map = {}
@@ -198,13 +284,24 @@ def build_all_dataframes(
     if raw_nysd is not None:
         result["inventory"] = _build_inventory(raw_nysd)
 
-    result["inventory_accuracy"] = _build_inventory_accuracy(
-        result["receiving"], result["order_despatch"],
-        result["returns"], result["inventory"]
-    )
-
     if raw_transport is not None:
         result["transport"] = _build_transport(raw_transport)
+        known_plants = set(ZONE_MAP) | set(zone_map)
+        prim_tp, sec_tp = _split_transport(
+            result["transport"], primary_ship_types, secondary_ship_types, known_plants
+        )
+        result["despatch_secondary"] = _build_despatch_from_transport(sec_tp)
+        result["receiving_primary"]  = _build_receiving_from_transport(prim_tp)
+
+    # Inventory accuracy prefers transport-sourced volumes when available
+    def _pick(preferred, fallback):
+        return preferred if preferred is not None and not preferred.empty else fallback
+
+    result["inventory_accuracy"] = _build_inventory_accuracy(
+        _pick(result["receiving_primary"], result["receiving"]),
+        _pick(result["despatch_secondary"], result["order_despatch"]),
+        result["returns"], result["inventory"]
+    )
 
     if ost_bytes:
         raw_ost, _ = load_ost(ost_bytes)
@@ -227,6 +324,9 @@ def _extract(df, src_col, candidates=None) -> pd.Series:
 def _build_customer_orders(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
+    # Filtered subsets keep the parent's index — reset so Series assignments
+    # (e.g. _to_date/_to_numeric results) align positionally, not by old index.
+    df = df.reset_index(drop=True)
 
     inv_col   = _sc(df, _INV_COLS)
     date_col  = _sc(df, _DATE_COLS)
@@ -258,6 +358,7 @@ def _build_customer_orders(df: pd.DataFrame) -> pd.DataFrame:
 def _build_order_despatch(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
+    df = df.reset_index(drop=True)
 
     inv_col   = _sc(df, _INV_COLS)
     date_col  = _sc(df, _DATE_COLS)
@@ -288,6 +389,7 @@ def _build_order_despatch(df: pd.DataFrame) -> pd.DataFrame:
 def _build_returns(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
+    df = df.reset_index(drop=True)
 
     inv_col    = _sc(df, _INV_COLS)
     ref_col    = _sc(df, _REF_COLS)
@@ -328,6 +430,7 @@ def _build_returns(df: pd.DataFrame) -> pd.DataFrame:
 def _build_receiving(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
+    df = df.reset_index(drop=True)
 
     inv_col    = _sc(df, _INV_COLS)
     date_col   = _sc(df, _DATE_COLS)
